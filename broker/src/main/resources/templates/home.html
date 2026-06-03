@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+  <html xmlns:th="http://www.thymeleaf.org">
+  <head>
+      <meta charset="UTF-8">
+      <title>Webshop</title>
+  </head>
+  <body>
+      <h1>Products</h1>
+      <table border="1" cellpadding="6">
+          <thead>
+              <tr><th>Name</th><th>Description</th><th>Price</th><th>Stock</th></tr>
+          </thead>
+          <tbody>
+              <tr th:each="p : ${products}">
+                  <td th:text="${p.name()}">name</td>
+                  <td th:text="${p.description()}">description</td>
+                  <td th:text="${p.price()}">price</td>
+                  <td th:text="${p.stock()}">stock</td>
+              </tr>
+          </tbody>
+      </table>
+  </body>   
+  </html>
