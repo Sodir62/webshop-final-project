@@ -11,9 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
    Spring MVC flow: a request is matched to a method by its @GetMapping path.
    The method builds a "Model" (a name -> value map the view reads) and returns
    a *view name*; Spring renders the matching Thymeleaf template and returns HTML.
-   
-    The catalog is not built here: the controller asks a SupplierClient for it.
- */
+*/
 
 @Controller
 public class HomeController {
