@@ -1,12 +1,37 @@
 package be.kuleuven.dsgt4.broker.supplier;
 
-import java.util.List; 
+import be.kuleuven.dsgt4.broker.data.SupplierType;
+
+import java.util.List;
+import java.util.Optional;
 
 /*
-    The broker's view of a supplier.
-    For now it is just fake stubs, but should become real HTTP calls to drink-supplier, food-supplier and ticket-supplier. 
+    How the broker see's the external suppliers. Other services should implement 
+    this interface. StubSupplierClient is a hardcoded example, but services should have HTTP 
+    client.
+
+    list()                 -> GET    /products
+    reserve(productId, n)  -> POST   /reservations
+    confirm(reservationId) -> POST   /reservations/{id}/confirm
+    cancel(reservationId)  -> DELETE /reservations/{id}
 */
 
 public interface SupplierClient {
-    List<Product> getProducts();
+    // Which supplier this client talks to; the registry routes by this.
+    SupplierType type();
+
+    // Current catalog with live stock. 
+    List<Product> list();
+
+    // One product by id, or empty if this supplier doesn't have it.
+    Optional<Product> find(String productId);
+
+    // Hold quantity amount of units; returns an reservation id. Throws if out of stock/unreachable.
+    String reserve(String productId, int quantity);
+
+    // Turn a hold into a sale. Throws if the reservation is unknown or supplier unreachable.
+    void confirm(String reservationId);
+
+    // Release a hold
+    void cancel(String reservationId);
 }
