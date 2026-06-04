@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>All orders — manager</title>
+    <link rel="stylesheet" th:href="@{/style.css}">
+</head>
+<body>
+    <header>
+        <h1>All orders</h1>
+        <p class="muted">Every order placed, newest first.</p>
+    </header>
+
+    <section class="card">
+        <table>
+            <thead>
+                <tr>
+                    <th>Placed</th><th>Order</th><th>Customer</th><th>Deliver to</th>
+                    <th>Items</th><th>Total &euro;</th><th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr th:each="o : ${orders}">
+                    <td th:text="${o.createdAt}">when</td>
+                    <td><a th:href="@{/orders/{id}(id=${o.id})}"><code th:text="${o.id}">id</code></a></td>
+                    <td th:text="${o.cardholderName}">name</td>
+                    <td th:text="${o.deliveryAddress}">address</td>
+                    <td th:text="${o.items.size()}">0</td>
+                    <td th:text="${o.total()}">0</td>
+                    <td>
+                        <span class="badge"
+                              th:classappend="${o.status.name() == 'SUCCEEDED' ? 'ok' : (o.status.name() == 'FAILED' ? 'fail' : '')}"
+                              th:text="${o.status}">STATUS</span>
+                    </td>
+                </tr>
+                <tr th:if="${#lists.isEmpty(orders)}">
+                    <td colspan="7" class="muted">No orders yet.</td>
+                </tr>
+            </tbody>
+        </table>
+    </section>
+</body>
+</html>

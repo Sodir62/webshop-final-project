@@ -1,23 +1,31 @@
 <!DOCTYPE html>
-  <html xmlns:th="http://www.thymeleaf.org">
-  <head>
-      <meta charset="UTF-8">
-      <title>Webshop</title>
-  </head>
-  <body>
-      <h1>Products</h1>
-      <table border="1" cellpadding="6">
-          <thead>
-              <tr><th>Name</th><th>Description</th><th>Price</th><th>Stock</th></tr>
-          </thead>
-          <tbody>
-              <tr th:each="p : ${products}">
-                  <td th:text="${p.name()}">name</td>
-                  <td th:text="${p.description()}">description</td>
-                  <td th:text="${p.price()}">price</td>
-                  <td th:text="${p.stock()}">stock</td>
-              </tr>
-          </tbody>
-      </table>
-  </body>   
-  </html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Concerts — web shop</title>
+    <link rel="stylesheet" th:href="@{/style.css}">
+</head>
+<body>
+    <header>
+        <h1>Choose a concert</h1>
+        <p class="muted">Pick a show, then add tickets, food and drinks. Your order is placed
+            across our suppliers all-or-nothing.</p>
+        <p><a th:href="@{/manager/orders}" class="linkbtn">Admin</a></p>
+    </header>
+
+    <section class="grid">
+        <article class="card" th:each="t : ${tickets}">
+            <h2 th:text="${t.name()}">Concert</h2>
+            <p class="muted" th:text="${t.description()}">when / where</p>
+            <p>
+                <span class="badge" th:text="'€' + ${t.price()}">€0</span>
+                <span class="badge ok" th:if="${t.stock() > 0}" th:text="${t.stock()} + ' left'">n left</span>
+                <span class="badge fail" th:unless="${t.stock() > 0}">sold out</span>
+            </p>
+            <p><a th:href="@{/concerts/{id}(id=${t.id()})}">Choose this concert &rarr;</a></p>
+        </article>
+    </section>
+
+    <p class="muted" th:if="${#lists.isEmpty(tickets)}">No concerts available right now.</p>
+</body>
+</html>
