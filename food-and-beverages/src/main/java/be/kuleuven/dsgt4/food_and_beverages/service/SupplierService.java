@@ -1,5 +1,6 @@
 package be.kuleuven.dsgt4.food_and_beverages.service;
 
+import be.kuleuven.dsgt4.food_and_beverages.data.Category;
 import be.kuleuven.dsgt4.food_and_beverages.data.Product;
 import be.kuleuven.dsgt4.food_and_beverages.data.ProductRepository;
 import be.kuleuven.dsgt4.food_and_beverages.data.Reservation;
@@ -33,9 +34,11 @@ public class SupplierService {
         this.reservations = reservations;
     }
 
+    // List the catalog. With no category the whole catalog is returned; with FOOD or DRINK
+    // only that kind, so the broker's two suppliers each see just their own products.
     @Transactional(readOnly = true)
-    public List<Product> listProducts() {
-        return products.findAll();
+    public List<Product> listProducts(Category category) {
+        return category == null ? products.findAll() : products.findByCategory(category);
     }
 
     // Hold `quantity` units of a product and return the new reservation. Rejects bad input,

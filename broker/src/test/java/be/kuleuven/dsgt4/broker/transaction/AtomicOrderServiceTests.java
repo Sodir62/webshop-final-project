@@ -11,6 +11,7 @@ import be.kuleuven.dsgt4.broker.supplier.SupplierRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -19,7 +20,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
+// "stub": run FOOD/DRINK as in-process stubs so the 2PC success/rollback paths can be driven
+// (e.g. setDown) without a live supplier service.
 @SpringBootTest
+@ActiveProfiles("stub")
 @Transactional
 class AtomicOrderServiceTests {
 

@@ -2,6 +2,8 @@ package be.kuleuven.dsgt4.food_and_beverages.data;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 
 import java.math.BigDecimal;
@@ -33,15 +35,21 @@ public class Product {
     @Column(nullable = false)
     private int stock;
 
+    // FOOD or DRINK, so the broker (which treats them as two suppliers) can list one kind.
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private Category category;
+
     protected Product() {
     }
 
-    public Product(String id, String name, String description, BigDecimal price, int stock) {
+    public Product(String id, String name, String description, BigDecimal price, int stock, Category category) {
         this.id = id;
         this.name = name;
         this.description = description;
         this.price = price;
         this.stock = stock;
+        this.category = category;
     }
 
     public String getId() {
@@ -66,5 +74,9 @@ public class Product {
 
     public void setStock(int stock) {
         this.stock = stock;
+    }
+
+    public Category getCategory() {
+        return category;
     }
 }
