@@ -2,6 +2,8 @@ package be.kuleuven.dsgt4.broker.data;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -9,16 +11,19 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 
 import java.math.BigDecimal;
+import java.util.Objects;
 
-/** One entry of an order: a product, a quantity, and the price at purchase time. */
+// One entry of an order: a product, a quantity, and the price at purchase time.
+
 @Entity
 public class OrderItem {
-
-    // A DB-generated Long is fine here: an item's id never leaves the broker, unlike
-    // the order's UUID which crosses service boundaries.
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private SupplierType supplierType;
 
     @Column(nullable = false)
     private String productId;
@@ -32,6 +37,14 @@ public class OrderItem {
     @Column(nullable = false)
     private int quantity;
 
+    // 2PC: the supplier's hold id and how far this item got
+    @Column(length = 64)
+    private String reservationId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private ItemStatus status = ItemStatus.PENDING;
+
     // Owning side: this table gets the "order_id" foreign-key column.
     @ManyToOne(optional = false)
     @JoinColumn(name = "order_id")
@@ -40,10 +53,14 @@ public class OrderItem {
     protected OrderItem() {
     }
 
-    public OrderItem(String productId, String productName, BigDecimal unitPrice, int quantity) {
-        this.productId = productId;
-        this.productName = productName;
-        this.unitPrice = unitPrice;
+    public OrderItem(SupplierType supplierType, String productId, String productName, BigDecimal unitPrice, int quantity) {
+        this.supplierType = Objects.requireNonNull(supplierType, "supplierType");
+        this.productId = Objects.requireNonNull(productId, "productId");
+        this.productName = Objects.requireNonNull(productName, "productName");
+        this.unitPrice = Objects.requireNonNull(unitPrice, "unitPrice");
+        if (quantity <= 0) {
+            throw new IllegalArgumentException("quantity must be positive, was " + quantity);
+        }
         this.quantity = quantity;
     }
 
@@ -58,6 +75,10 @@ public class OrderItem {
 
     public Long getId() {
         return id;
+    }
+
+    public SupplierType getSupplierType() {
+        return supplierType;
     }
 
     public String getProductId() {
@@ -76,7 +97,19 @@ public class OrderItem {
         return quantity;
     }
 
-    public CustomerOrder getOrder() {
-        return order;
+    public String getReservationId() {
+        return reservationId;
+    }
+
+    public void setReservationId(String reservationId) {
+        this.reservationId = reservationId;
+    }
+
+    public ItemStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(ItemStatus status) {
+        this.status = status;
     }
 }

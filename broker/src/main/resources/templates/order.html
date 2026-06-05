@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Your order</title>
+    <link rel="stylesheet" th:href="@{/style.css}">
+</head>
+<body>
+    <p><a th:href="@{/}">&larr; Back to the shop</a></p>
+
+    <header>
+        <h1>Your order</h1>
+        <p class="muted">Order <code th:text="${order.id}">id</code></p>
+        <p>
+            <span class="badge"
+                  th:classappend="${order.status.name() == 'SUCCEEDED' ? 'ok' : (order.status.name() == 'FAILED' ? 'fail' : '')}"
+                  th:text="${order.status}">STATUS</span>
+        </p>
+    </header>
+
+    <section class="card">
+        <table>
+            <thead>
+                <tr>
+                    <th>Supplier</th><th>Product</th><th>Qty</th><th>Unit €</th>
+                    <th>Subtotal €</th><th>Item</th><th>Reservation</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr th:each="item : ${order.items}">
+                    <td th:text="${item.supplierType}">type</td>
+                    <td th:text="${item.productName}">name</td>
+                    <td th:text="${item.quantity}">qty</td>
+                    <td th:text="${item.unitPrice}">unit</td>
+                    <td th:text="${item.subtotal()}">subtotal</td>
+                    <td>
+                        <span class="badge"
+                              th:classappend="${item.status.name() == 'CONFIRMED' ? 'ok' : (item.status.name() == 'FAILED' ? 'fail' : '')}"
+                              th:text="${item.status}">st</span>
+                    </td>
+                    <td><code th:text="${item.reservationId} ?: '—'">res</code></td>
+                </tr>
+            </tbody>
+            <tfoot>
+                <tr><th colspan="4">Total</th><th th:text="${order.total()}">total</th><th colspan="2"></th></tr>
+            </tfoot>
+        </table>
+    </section>
+
+    <section class="summary">
+        <div><strong>Deliver to:</strong> <span th:text="${order.deliveryAddress}">address</span></div>
+        <div><strong>Paid by:</strong> <span th:text="${order.cardholderName}">name</span>
+            (card •••• <span th:text="${order.cardLast4}">1234</span>)</div>
+        <div class="muted" th:text="'Placed at ' + ${order.createdAt}">placed at</div>
+    </section>
+</body>
+</html>

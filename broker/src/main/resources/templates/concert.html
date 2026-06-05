@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title th:text="${concert.name()}">Order</title>
+    <link rel="stylesheet" th:href="@{/style.css}">
+</head>
+<body>
+    <p><a th:href="@{/}">&larr; All concerts</a></p>
+
+    <header>
+        <h1 th:text="${concert.name()}">Concert</h1>
+        <p class="muted" th:text="${concert.description()}">when / where</p>
+        <p><span class="badge" th:text="'€' + ${concert.price()}">€0</span></p>
+    </header>
+
+    <form th:action="@{/orders}" th:object="${orderForm}" method="post">
+
+        <!-- which concert: preset by the controller from the URL, not chosen here -->
+        <input type="hidden" th:field="*{ticketProductId}">
+        <p class="error" th:errors="*{ticketProductId}"></p>
+
+        <section class="card">
+            <h2>Tickets <span class="req">required</span></h2>
+            <div class="field">
+                <label for="ticketQty">Number of tickets</label>
+                <input id="ticketQty" type="number" min="1" th:field="*{ticketQty}">
+                <p class="error" th:errors="*{ticketQty}"></p>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>Food <span class="opt">optional</span></h2>
+            <div class="field">
+                <label for="food">Dish</label>
+                <select id="food" th:field="*{foodProductId}">
+                    <option value="">— no food —</option>
+                    <option th:each="f : ${food}" th:value="${f.id()}"
+                            th:text="${f.name() + ' (€' + f.price() + ')'}">food</option>
+                </select>
+            </div>
+            <div class="field">
+                <label for="foodQty">Portions</label>
+                <input id="foodQty" type="number" min="0" th:field="*{foodQty}">
+                <p class="error" th:errors="*{foodLineConsistent}"></p>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>Drinks <span class="opt">optional</span></h2>
+            <div class="field">
+                <label for="drink">Drink</label>
+                <select id="drink" th:field="*{drinkProductId}">
+                    <option value="">— no drinks —</option>
+                    <option th:each="d : ${drinks}" th:value="${d.id()}"
+                            th:text="${d.name() + ' (€' + d.price() + ')'}">drink</option>
+                </select>
+            </div>
+            <div class="field">
+                <label for="drinkQty">Portions</label>
+                <input id="drinkQty" type="number" min="0" th:field="*{drinkQty}">
+                <p class="error" th:errors="*{drinkLineConsistent}"></p>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>Delivery &amp; payment</h2>
+            <div class="field">
+                <label for="addr">Delivery address</label>
+                <input id="addr" type="text" th:field="*{deliveryAddress}">
+                <p class="error" th:errors="*{deliveryAddress}"></p>
+            </div>
+            <div class="field">
+                <label for="name">Cardholder name</label>
+                <input id="name" type="text" th:field="*{cardholderName}">
+                <p class="error" th:errors="*{cardholderName}"></p>
+            </div>
+            <div class="field">
+                <label for="card">Card (last 4 digits)</label>
+                <input id="card" type="text" maxlength="4" th:field="*{cardLast4}">
+                <p class="error" th:errors="*{cardLast4}"></p>
+            </div>
+        </section>
+
+        <button type="submit">Place order</button>
+    </form>
+</body>
+</html>

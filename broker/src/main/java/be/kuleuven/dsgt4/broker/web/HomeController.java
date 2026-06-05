@@ -1,30 +1,17 @@
 package be.kuleuven.dsgt4.broker.web;
 
-import be.kuleuven.dsgt4.broker.supplier.SupplierClient;
 import org.springframework.stereotype.Controller;
-import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 
 /*
-   Spring MVC controller for the home page.
-    
-   Spring MVC flow: a request is matched to a method by its @GetMapping path.
-   The method builds a "Model" (a name -> value map the view reads) and returns
-   a *view name*; Spring renders the matching Thymeleaf template and returns HTML.
+   The shop front: a grid of concerts to choose from. The catalog (tickets) is supplied to
+   the view by CatalogModelAdvice; picking a concert leads to /concerts/{id}.
 */
-
 @Controller
 public class HomeController {
-    private final SupplierClient supplier;
-
-    // Spring injects the SupplierClient it manages (the @Component) into this constructor.
-    public HomeController(SupplierClient supplier) {
-        this.supplier = supplier;
-    }
 
     @GetMapping("/")
-    public String home(Model model) {
-        model.addAttribute("products", supplier.getProducts());
+    public String home() {
         return "home";
     }
 }

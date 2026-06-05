@@ -12,10 +12,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /*
-    Test class created to test whether insertion etc works. 
+    Persistence tests for CustomerOrder against the real MySQL test DB (Replace.NONE, not an
+    H2 substitute), so the negative tests below exercise the actual column/null constraints.
 */
-
-
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class CustomerOrderRepositoryTests {
@@ -38,8 +37,8 @@ class CustomerOrderRepositoryTests {
     @Test
     void savesOrderWithItemsAndComputesTotal() {
         CustomerOrder order = new CustomerOrder("Diestsestraat 1, Leuven", "Alice Smith", "4242");
-        order.addItem(new OrderItem("T-001", "Coldplay @ Sportpaleis", new BigDecimal("85.00"), 2));
-        order.addItem(new OrderItem("D-001", "Trappist beer", new BigDecimal("4.00"), 3));
+        order.addItem(new OrderItem(SupplierType.TICKET, "T-001", "Coldplay @ Sportpaleis", new BigDecimal("85.00"), 2));
+        order.addItem(new OrderItem(SupplierType.DRINK, "D-001", "Trappist beer", new BigDecimal("4.00"), 3));
         repository.save(order);   // one save persists the order AND both items (cascade)
 
         CustomerOrder loaded = repository.findById(order.getId()).orElseThrow();

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Something went wrong</title>
+    <link rel="stylesheet" th:href="@{/style.css}">
+</head>
+<body>
+    <p><a th:href="@{/}">&larr; Back to the shop</a></p>
+
+    <header>
+        <h1>Something went wrong</h1>
+        <p>
+            <span class="badge fail" th:text="${status} ?: 'Error'">500</span>
+            <span class="muted" th:text="${error}">Unexpected error</span>
+        </p>
+    </header>
+
+    <section class="card">
+        <p>We couldn't show that page. If you followed a link to an order, the order id may be
+           wrong, or an item you chose may no longer be available.</p>
+        <p><a th:href="@{/}">Return to the shop</a> and try again.</p>
+    </section>
+</body>
+</html>

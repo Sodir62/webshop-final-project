@@ -20,8 +20,10 @@ import java.util.UUID;
 
     Id is a broker-generated UUID (String) so the broker has an order reference
     Stored as a 36-char String
-    An order is composed of one or more OrderItems (the "items" collection below).
+    An order is composed of one or more OrderItems.
+    Entity = Because it goes inside of the DB
  */
+
 @Entity
 public class CustomerOrder {
     @Id
@@ -34,11 +36,9 @@ public class CustomerOrder {
     @Column(nullable = false)
     private String cardholderName;
 
-    /** Only the last 4 digits — we simulate payment, never store a real card number. */
     @Column(length = 4, nullable = false)
     private String cardLast4;
 
-    /** Stored as its NAME ("CREATED"), not its position — see OrderStatus note on STRING vs ORDINAL. */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private OrderStatus status = OrderStatus.CREATED;
@@ -89,7 +89,6 @@ public class CustomerOrder {
         return createdAt;
     }
 
-    /** Adds an item and wires the back-reference so JPA sets the foreign key. */
     public void addItem(OrderItem item) {
         item.setOrder(this);
         this.items.add(item);
