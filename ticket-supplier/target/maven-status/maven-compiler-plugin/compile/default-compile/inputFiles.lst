@@ -1,0 +1,16 @@
+/home/dappvm/Documents/webshop-final-project/ticket-supplier/src/main/java/be/kuleuven/dsgt4/ticketsupplier/TicketSupplierApplication.java
+/home/dappvm/Documents/webshop-final-project/ticket-supplier/src/main/java/be/kuleuven/dsgt4/ticketsupplier/config/CatalogSeeder.java
+/home/dappvm/Documents/webshop-final-project/ticket-supplier/src/main/java/be/kuleuven/dsgt4/ticketsupplier/data/ReservationStatus.java
+/home/dappvm/Documents/webshop-final-project/ticket-supplier/src/main/java/be/kuleuven/dsgt4/ticketsupplier/data/TicketProduct.java
+/home/dappvm/Documents/webshop-final-project/ticket-supplier/src/main/java/be/kuleuven/dsgt4/ticketsupplier/data/TicketProductRepository.java
+/home/dappvm/Documents/webshop-final-project/ticket-supplier/src/main/java/be/kuleuven/dsgt4/ticketsupplier/data/TicketReservation.java
+/home/dappvm/Documents/webshop-final-project/ticket-supplier/src/main/java/be/kuleuven/dsgt4/ticketsupplier/data/TicketReservationRepository.java
+/home/dappvm/Documents/webshop-final-project/ticket-supplier/src/main/java/be/kuleuven/dsgt4/ticketsupplier/service/TicketSupplierException.java
+/home/dappvm/Documents/webshop-final-project/ticket-supplier/src/main/java/be/kuleuven/dsgt4/ticketsupplier/service/TicketSupplierService.java
+/home/dappvm/Documents/webshop-final-project/ticket-supplier/src/main/java/be/kuleuven/dsgt4/ticketsupplier/web/ApiExceptionHandler.java
+/home/dappvm/Documents/webshop-final-project/ticket-supplier/src/main/java/be/kuleuven/dsgt4/ticketsupplier/web/ErrorResponse.java
+/home/dappvm/Documents/webshop-final-project/ticket-supplier/src/main/java/be/kuleuven/dsgt4/ticketsupplier/web/ProductController.java
+/home/dappvm/Documents/webshop-final-project/ticket-supplier/src/main/java/be/kuleuven/dsgt4/ticketsupplier/web/ProductResponse.java
+/home/dappvm/Documents/webshop-final-project/ticket-supplier/src/main/java/be/kuleuven/dsgt4/ticketsupplier/web/ReservationController.java
+/home/dappvm/Documents/webshop-final-project/ticket-supplier/src/main/java/be/kuleuven/dsgt4/ticketsupplier/web/ReservationResponse.java
+/home/dappvm/Documents/webshop-final-project/ticket-supplier/src/main/java/be/kuleuven/dsgt4/ticketsupplier/web/ReserveRequest.java
