@@ -28,6 +28,8 @@ public class HttpSupplierClient implements SupplierClient {
 
     public HttpSupplierClient(SupplierType type, String baseUrl) {
         this.type = type;
+        // TODO fault tolerance: set connect/read timeouts (a hung supplier currently blocks the
+        // broker forever), and guard find() against a null product id (malformed response -> NPE).
         this.http = RestClient.builder().baseUrl(baseUrl).build();
     }
 
