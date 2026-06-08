@@ -35,6 +35,12 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc</artifactId>
 		</dependency>
+		
+		<!-- MongoDB driver: alternative NoSQL implementation (mongo profile) -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-data-mongodb</artifactId>
+    </dependency>
 
 		<!-- Persistence: the supplier owns its own database (entity<->table + repositories) -->
 		<dependency>
