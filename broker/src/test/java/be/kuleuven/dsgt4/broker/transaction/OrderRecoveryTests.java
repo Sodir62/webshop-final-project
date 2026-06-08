@@ -10,6 +10,7 @@ import be.kuleuven.dsgt4.broker.supplier.SupplierRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -21,7 +22,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
     state (with a real supplier hold already taken), then runs recovery and checks the
     2PC rule: a committed decision rolls forward, an undecided one rolls back.
 */
+// "stub": in-process suppliers, so the test runs without live supplier services.
 @SpringBootTest
+@ActiveProfiles("stub")
 @Transactional
 class OrderRecoveryTests {
 

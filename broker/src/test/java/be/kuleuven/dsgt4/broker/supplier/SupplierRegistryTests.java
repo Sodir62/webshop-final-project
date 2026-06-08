@@ -4,13 +4,16 @@ import be.kuleuven.dsgt4.broker.data.SupplierType;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /*
     The registry must route each SupplierType to a client that actually serves it.
 */
+// "stub": in-process suppliers, so the test runs without live supplier services.
 @SpringBootTest
+@ActiveProfiles("stub")
 class SupplierRegistryTests {
 
     @Autowired

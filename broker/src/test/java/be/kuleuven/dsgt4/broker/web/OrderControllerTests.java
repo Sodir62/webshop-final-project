@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,7 +21,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     carry a CSRF token via .with(csrf()) -- the real browser form gets one automatically from
     Thymeleaf (th:action).
 */
+// "stub": in-process suppliers, so the test runs without live supplier services.
 @SpringBootTest
+@ActiveProfiles("stub")
 @AutoConfigureMockMvc
 @Transactional
 class OrderControllerTests {
