@@ -7,29 +7,25 @@ import be.kuleuven.dsgt4.ticketsupplier.data.TicketReservationRepository;
 import be.kuleuven.dsgt4.ticketsupplier.data.ReservationStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.util.List;
 
 @Service
+@Profile("!mongo")
 public class TicketSupplierService {
-
     private static final Logger log = LoggerFactory.getLogger(TicketSupplierService.class);
-
     private final TicketProductRepository products;
     private final TicketReservationRepository reservations;
-
     public TicketSupplierService(TicketProductRepository products, TicketReservationRepository reservations) {
         this.products = products;
         this.reservations = reservations;
     }
-
     @Transactional(readOnly = true)
     public List<TicketProduct> listProducts() {
         return products.findAll();
     }
-
     @Transactional
     public TicketReservation reserve(String productId, int quantity) {
         if (quantity <= 0) {
@@ -48,7 +44,6 @@ public class TicketSupplierService {
         log.info("reserved {} x{} -> {}", productId, quantity, reservation.getId());
         return reservation;
     }
-
     @Transactional
     public void confirm(String reservationId) {
         TicketReservation reservation = reservations.findWithLockById(reservationId)
@@ -64,7 +59,6 @@ public class TicketSupplierService {
                     "reservation " + reservationId + " was cancelled and cannot be confirmed");
         }
     }
-
     @Transactional
     public void cancel(String reservationId) {
         TicketReservation reservation = reservations.findWithLockById(reservationId).orElse(null);

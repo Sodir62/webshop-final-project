@@ -1,7 +1,7 @@
 package be.kuleuven.dsgt4.ticketsupplier.web;
 
-import be.kuleuven.dsgt4.ticketsupplier.data.TicketReservation;
-import be.kuleuven.dsgt4.ticketsupplier.service.TicketSupplierService;
+import be.kuleuven.dsgt4.ticketsupplier.data.MongoTicketReservation;
+import be.kuleuven.dsgt4.ticketsupplier.service.MongoTicketSupplierService;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -12,21 +12,25 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+/*
+   MongoDB version of ReservationController.
+   Only active when running with the "mongo" profile.
+*/
 @RestController
-@Profile("!mongo")
+@Profile("mongo")
 @RequestMapping("/reservations")
-public class ReservationController {
+public class MongoReservationController {
 
-    private final TicketSupplierService supplier;
+    private final MongoTicketSupplierService supplier;
 
-    public ReservationController(TicketSupplierService supplier) {
+    public MongoReservationController(MongoTicketSupplierService supplier) {
         this.supplier = supplier;
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ReservationResponse reserve(@RequestBody ReserveRequest request) {
-        TicketReservation reservation = supplier.reserve(request.productId(), request.quantity());
+        MongoTicketReservation reservation = supplier.reserve(request.productId(), request.quantity());
         return new ReservationResponse(reservation.getId());
     }
 

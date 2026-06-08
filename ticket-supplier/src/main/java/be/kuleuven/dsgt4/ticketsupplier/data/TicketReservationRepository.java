@@ -5,7 +5,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 
 import java.util.Optional;
+import org.springframework.context.annotation.Profile;
 
+@Profile("!mongo")
 public interface TicketReservationRepository extends JpaRepository<TicketReservation, String> {
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
