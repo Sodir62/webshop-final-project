@@ -13,8 +13,8 @@ import java.util.List;
 
 /*
    Seeds the food + drink catalog on first start (only when the table is empty, so existing
-   stock survives restarts). These are exactly the products the broker's StubSupplierClient
-   currently fakes for FOOD and DRINK, so this service is a drop-in replacement for both.
+   stock survives restarts). These mirror the products the broker's 'stub'-profile
+   StubSupplierClient uses for FOOD and DRINK, so this one service serves both.
 */
 @Component
 public class CatalogSeeder implements CommandLineRunner {

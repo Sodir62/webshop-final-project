@@ -1,16 +1,13 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
-<head>
-    <meta charset="UTF-8">
-    <title>Concerts — web shop</title>
-    <link rel="stylesheet" th:href="@{/style.css}">
-</head>
+<head th:replace="~{fragments :: head('Concerts — Concert Webshop')}"></head>
 <body>
+<header th:replace="~{fragments :: topbar}"></header>
+<main class="page">
     <header>
         <h1>Choose a concert</h1>
         <p class="muted">Pick a show, then add tickets, food and drinks. Your order is placed
             across our suppliers all-or-nothing.</p>
-        <p><a th:href="@{/manager/orders}" class="linkbtn">Admin</a></p>
     </header>
 
     <section class="grid">
@@ -22,10 +19,11 @@
                 <span class="badge ok" th:if="${t.stock() > 0}" th:text="${t.stock()} + ' left'">n left</span>
                 <span class="badge fail" th:unless="${t.stock() > 0}">sold out</span>
             </p>
-            <p><a th:href="@{/concerts/{id}(id=${t.id()})}">Choose this concert &rarr;</a></p>
+            <p><a class="linkbtn" th:href="@{/concerts/{id}(id=${t.id()})}">Choose this concert &rarr;</a></p>
         </article>
     </section>
 
     <p class="muted" th:if="${#lists.isEmpty(tickets)}">No concerts available right now.</p>
+</main>
 </body>
 </html>

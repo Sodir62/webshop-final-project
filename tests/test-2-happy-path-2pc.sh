@@ -1,12 +1,15 @@
 #!/bin/bash
-# TEST 2: Happy Path — Full 2PC (reserve → confirm on both suppliers)
-# Simulates exactly what the broker does when an order succeeds.
+# TEST 2: Supplier reserve→confirm contract (the 2PC commit primitives)
+# Drives the supplier endpoints directly, the way the broker's AtomicOrderService does on a
+# successful order. NOTE: this exercises the SUPPLIER contract, not the broker coordinator --
+# the broker's own atomicity is covered by the Java AtomicOrderServiceTests, and test-9 drives
+# a real end-to-end order through the broker.
 # Run from: anywhere with network access to the supplier VMs.
 
 source "$(dirname "$0")/config.sh"
 
 echo "========================================"
-echo " TEST 2: Happy Path — Full 2PC"
+echo " TEST 2: Supplier reserve→confirm contract"
 echo "========================================"
 
 # --- PHASE 1: RESERVE ---
@@ -59,6 +62,6 @@ else
 fi
 
 echo ""
-pass "ORDER SUCCEEDED — 2PC completed successfully"
+pass "Supplier reserve→confirm contract OK — both holds confirmed"
 echo "  Ticket reservationId : $TICKET_RES_ID"
 echo "  Food reservationId   : $FOOD_RES_ID"

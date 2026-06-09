@@ -6,9 +6,8 @@ import java.util.List;
 import java.util.Optional;
 
 /*
-    How the broker see's the external suppliers. Other services should implement 
-    this interface. StubSupplierClient is a hardcoded example, but services should have HTTP 
-    client.
+    How the broker sees the external suppliers. HttpSupplierClient talks to the real services
+    over HTTP; StubSupplierClient is the in-process fake used under the 'stub' profile (tests).
 
     list()                 -> GET    /products
     reserve(productId, n)  -> POST   /reservations

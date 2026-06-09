@@ -44,35 +44,23 @@ public class AtomicOrderService {
         order.setStatus(OrderStatus.RESERVING);
         save(order);
 
+        // PHASE 1 (the "vote"): reserve every item. While we are still voting the order is
+        // UNDECIDED, so a failure here rolls BACK: cancel the holds we took and mark it FAILED.
         List<OrderItem> reserved = new ArrayList<>();   // exactly the holds we must undo on failure
         try {
-            // phase 1: reserve every item; the first failure aborts the loop.
             for (OrderItem item : List.copyOf(order.getItems())) {
                 String reservationId = suppliers.get(item.getSupplierType())
                         .reserve(item.getProductId(), item.getQuantity());
                 item.setReservationId(reservationId);
                 item.setStatus(ItemStatus.RESERVED);
                 reserved.add(item);
-                save(order);   
-                //to do if our broker crashes here we are lowkey fucked, because it remains pending, so we cant cancel it. 
+                save(order);
+                //to do if our broker crashes here we are lowkey fucked, because it remains pending, so we cant cancel it.
                 // We either need to add some kind way to track this, probably with the supplier.
                 log.info("  reserved {} x{} -> {}", item.getProductId(), item.getQuantity(), reservationId);
             }
-            order.setStatus(OrderStatus.RESERVED);
-            save(order);
-
-            // phase 2: confirm every reservation, making each sale permanent
-            order.setStatus(OrderStatus.CONFIRMING);
-            save(order);
-            confirmReserved(order);
-
-            order.setStatus(OrderStatus.SUCCEEDED);
-            save(order);
-            log.info("order {} SUCCEEDED, total={}", orderId, order.total());
-            return order;
-
         } catch (SupplierException failure) {
-            log.warn("order {} FAILING (\"{}\") -> undoing {} reservation(s)",
+            log.warn("order {} FAILING in reserve phase (\"{}\") -> undoing {} reservation(s)",
                     orderId, failure.getMessage(), reserved.size());
             compensate(reserved);
             markRemainingItemsFailed(order);
@@ -80,6 +68,30 @@ public class AtomicOrderService {
             save(order);
             return order;
         }
+
+        // COMMIT POINT: every hold is in place, so the order is now DECIDED to commit. Past here
+        // we only ever roll FORWARD -- a committed transaction must never abort.
+        order.setStatus(OrderStatus.RESERVED);
+        save(order);
+
+        // PHASE 2 (the "commit"): confirm every reservation, making each sale permanent.
+        order.setStatus(OrderStatus.CONFIRMING);
+        save(order);
+        try {
+            confirmReserved(order);
+        } catch (SupplierException failure) {
+            // Do NOT compensate/abort: some items may already be permanent sales. Leave the order
+            // durably CONFIRMING so OrderRecoveryRunner finishes confirming it on the next startup
+            // (exactly what resume() does). No paid sale is ever discarded. TODO: no inline retry yet.
+            log.error("order {} confirm interrupted (\"{}\"); left CONFIRMING for recovery to roll forward",
+                    orderId, failure.getMessage());
+            return order;
+        }
+
+        order.setStatus(OrderStatus.SUCCEEDED);
+        save(order);
+        log.info("order {} SUCCEEDED, total={}", orderId, order.total());
+        return order;
     }
 
     /**

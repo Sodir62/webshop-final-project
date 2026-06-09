@@ -1,11 +1,9 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
-<head>
-    <meta charset="UTF-8">
-    <title th:text="${concert.name()}">Order</title>
-    <link rel="stylesheet" th:href="@{/style.css}">
-</head>
+<head th:replace="~{fragments :: head('Order — Concert Webshop')}"></head>
 <body>
+<header th:replace="~{fragments :: topbar}"></header>
+<main class="page">
     <p><a th:href="@{/}">&larr; All concerts</a></p>
 
     <header>
@@ -84,5 +82,6 @@
 
         <button type="submit">Place order</button>
     </form>
+</main>
 </body>
 </html>

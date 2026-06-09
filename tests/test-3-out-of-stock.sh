@@ -10,20 +10,24 @@ echo "========================================"
 echo " TEST 3: Out of Stock"
 echo "========================================"
 
-info "Checking current Metallica (T-002) stock..."
-curl -s "$TICKET/products" | python3 -c "
-import sys, json
-products = json.load(sys.stdin)
-for p in products:
-    if p['id'] == 'T-002':
-        print(f\"  T-002: {p['name']} — stock: {p['stock']}\")
-" 2>/dev/null
+info "Reading current Metallica (T-002) stock..."
+T2_STOCK=$(curl -s "$TICKET/products" | python3 -c "
+import sys,json
+for p in json.load(sys.stdin):
+    if p['id']=='T-002': print(p['stock'])
+" 2>/dev/null)
+
+if [ -z "$T2_STOCK" ] || [ "$T2_STOCK" -lt 1 ]; then
+    fail "Cannot run: T-002 stock is unreadable or already empty (got '$T2_STOCK')"
+    exit 1
+fi
+info "T-002 stock is $T2_STOCK"
 
 echo ""
-info "Reserving 2 tickets (all available stock)..."
+info "Reserving all $T2_STOCK ticket(s) — the full available stock..."
 RES1=$(curl -s -X POST "$TICKET/reservations" \
     -H "Content-Type: application/json" \
-    -d '{"productId":"T-002","quantity":2}')
+    -d "{\"productId\":\"T-002\",\"quantity\":$T2_STOCK}")
 RES1_ID=$(echo "$RES1" | grep -o '"reservationId":"[^"]*"' | cut -d'"' -f4)
 
 if [ -n "$RES1_ID" ]; then
@@ -47,5 +51,9 @@ fi
 
 echo ""
 info "Cleaning up — cancelling reservation $RES1_ID (restoring stock)..."
-curl -s -X DELETE "$TICKET/reservations/$RES1_ID"
-pass "Stock restored"
+CLEAN_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$TICKET/reservations/$RES1_ID")
+if [ "$CLEAN_STATUS" = "204" ]; then
+    pass "Stock restored"
+else
+    fail "Could not restore stock (HTTP $CLEAN_STATUS) — hold $RES1_ID may linger"
+fi

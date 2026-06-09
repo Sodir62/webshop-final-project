@@ -79,4 +79,25 @@ class OrderRecoveryTests {
         assertEquals(OrderStatus.FAILED, recovered.getStatus());
         assertEquals(before, stock(SupplierType.TICKET, "T-001"));   // hold cancelled -> stock restored
     }
+
+    @Test
+    void rollsForwardFromConfirmingState() {
+        int before = stock(SupplierType.TICKET, "T-001");
+        String resId = suppliers.get(SupplierType.TICKET).reserve("T-001", 2);   // hold exists, stock -2
+
+        CustomerOrder order = new CustomerOrder("Street 1", "Alice", "4242");
+        OrderItem item = new OrderItem(SupplierType.TICKET, "T-001", "Coldplay", new BigDecimal("85.00"), 2);
+        order.addItem(item);
+        item.setReservationId(resId);
+        item.setStatus(ItemStatus.RESERVED);
+        order.setStatus(OrderStatus.CONFIRMING);   // crashed mid-confirm; commit decision already made
+        orders.saveAndFlush(order);
+
+        atomicOrder.recoverInterruptedOrders();
+
+        CustomerOrder recovered = orders.findById(order.getId()).orElseThrow();
+        assertEquals(OrderStatus.SUCCEEDED, recovered.getStatus());
+        assertEquals(ItemStatus.CONFIRMED, recovered.getItems().get(0).getStatus());
+        assertEquals(before - 2, stock(SupplierType.TICKET, "T-001"));   // sale stands; confirm doesn't restore
+    }
 }

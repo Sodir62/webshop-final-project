@@ -1,13 +1,9 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
-<head>
-    <meta charset="UTF-8">
-    <title>Something went wrong</title>
-    <link rel="stylesheet" th:href="@{/style.css}">
-</head>
+<head th:replace="~{fragments :: head('Something went wrong — Concert Webshop')}"></head>
 <body>
-    <p><a th:href="@{/}">&larr; Back to the shop</a></p>
-
+<header th:replace="~{fragments :: topbar}"></header>
+<main class="page">
     <header>
         <h1>Something went wrong</h1>
         <p>
@@ -21,5 +17,6 @@
            wrong, or an item you chose may no longer be available.</p>
         <p><a th:href="@{/}">Return to the shop</a> and try again.</p>
     </section>
+</main>
 </body>
 </html>

@@ -10,7 +10,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /*
-    Fake supplier service, should be done for real as a project in the other folders
+    In-process fake supplier, used only under the 'stub' profile (tests/demo). The real HTTP
+    suppliers now exist as their own services (ticket-supplier, food-and-beverages).
 */
 public class StubSupplierClient implements SupplierClient {
     private final SupplierType type;
@@ -18,6 +19,7 @@ public class StubSupplierClient implements SupplierClient {
     private final Map<String, Integer> stock = new ConcurrentHashMap<>();      // productId -> units left
     private final Map<String, Reservation> reservations = new ConcurrentHashMap<>(); // id -> hold
     private volatile boolean down = false;
+    private volatile boolean failConfirm = false;
 
     public StubSupplierClient(SupplierType type, List<Product> products) {
         this.type = type;
@@ -30,6 +32,11 @@ public class StubSupplierClient implements SupplierClient {
     /** Test/demo hook: flip the supplier "offline" so every call throws. */
     public void setDown(boolean down) {
         this.down = down;
+    }
+
+    /** Test hook: make only confirm() fail, to simulate a crash mid-commit (reserve still works). */
+    public void setFailConfirm(boolean failConfirm) {
+        this.failConfirm = failConfirm;
     }
 
     private void ensureUp() {
@@ -85,6 +92,9 @@ public class StubSupplierClient implements SupplierClient {
     @Override
     public synchronized void confirm(String reservationId) {
         ensureUp();
+        if (failConfirm) {
+            throw new SupplierException(type + " confirm failed (simulated mid-commit failure)");
+        }
         Reservation r = reservations.get(reservationId);
         if (r == null) {
             throw new SupplierException("unknown reservation " + reservationId);

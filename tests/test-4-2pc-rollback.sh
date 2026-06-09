@@ -1,30 +1,45 @@
 #!/bin/bash
-# TEST 4: 2PC Rollback — food supplier out of stock mid-order
-# Reserves ticket successfully, then food fails (out of stock).
-# Expected: ticket reservation is CANCELLED (stock restored), order fails atomically.
+# TEST 4: Supplier rollback contract — cancel restores stock after a mid-order failure
+# Reserves a ticket, then food fails (out of stock), then cancels the ticket hold the way the
+# broker's compensate() would. NOTE: the rollback here is driven by THIS script, not the broker
+# coordinator -- the broker's own atomic rollback is covered by the Java
+# AtomicOrderServiceTests.downedSupplierRollsBackAndRestoresStock; test-9 drives the broker.
 # Run from: anywhere with network access to the supplier VMs.
 
 source "$(dirname "$0")/config.sh"
 
 echo "========================================"
-echo " TEST 4: 2PC Rollback (Atomicity)"
+echo " TEST 4: Supplier rollback contract (cancel restores stock)"
 echo "========================================"
 
-# First exhaust food stock so the second reservation fails
-info "Exhausting Nachos (F-001) stock to force a failure..."
+# Read the CURRENT F-001 stock and reserve all of it, so the next reserve is guaranteed to
+# fail regardless of how much stock the persistent supplier DB happens to have right now.
+info "Reading current Nachos (F-001) stock..."
+FOOD_STOCK=$(curl -s "$FOOD/products" | python3 -c "
+import sys,json
+for p in json.load(sys.stdin):
+    if p['id']=='F-001': print(p['stock'])
+" 2>/dev/null)
+
+if [ -z "$FOOD_STOCK" ] || [ "$FOOD_STOCK" -lt 1 ]; then
+    fail "Cannot run: F-001 stock is unreadable or already empty (got '$FOOD_STOCK')"
+    exit 1
+fi
+
+info "F-001 stock is $FOOD_STOCK; reserving all of it to force the next reserve to fail..."
 EXHAUST=$(curl -s -X POST "$FOOD/reservations" \
     -H "Content-Type: application/json" \
-    -d '{"productId":"F-001","quantity":200}')
+    -d "{\"productId\":\"F-001\",\"quantity\":$FOOD_STOCK}")
 EXHAUST_ID=$(echo "$EXHAUST" | grep -o '"reservationId":"[^"]*"' | cut -d'"' -f4)
 
 if [ -z "$EXHAUST_ID" ]; then
-    fail "Could not exhaust stock (already empty or error): $EXHAUST"
+    fail "Could not exhaust stock (error): $EXHAUST"
     exit 1
 fi
-pass "Nachos stock exhausted (hold: $EXHAUST_ID)"
+pass "Nachos stock exhausted (reserved $FOOD_STOCK, hold: $EXHAUST_ID)"
 
 echo ""
-info "--- Simulating broker 2PC order ---"
+info "--- Driving a broker-style 2PC order against the suppliers ---"
 
 # Phase 1a: Reserve ticket (succeeds)
 info "Phase 1: Reserving 1 ticket (T-001)..."
@@ -62,9 +77,13 @@ else
 fi
 
 echo ""
-pass "ATOMICITY VERIFIED — ticket stock restored, no partial order committed"
+pass "Supplier rollback contract OK — ticket hold cancelled, stock restored"
 
 # Restore nachos stock
 info "Restoring Nachos stock..."
-curl -s -X DELETE "$FOOD/reservations/$EXHAUST_ID" > /dev/null
-pass "Nachos stock restored"
+RESTORE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$FOOD/reservations/$EXHAUST_ID")
+if [ "$RESTORE_STATUS" = "204" ]; then
+    pass "Nachos stock restored"
+else
+    fail "Could not restore Nachos stock (HTTP $RESTORE_STATUS) — hold $EXHAUST_ID may linger"
+fi

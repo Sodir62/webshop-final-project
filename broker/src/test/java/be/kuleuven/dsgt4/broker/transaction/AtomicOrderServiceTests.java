@@ -75,4 +75,81 @@ class AtomicOrderServiceTests {
             drink.setDown(false);   // don't leak the simulated outage into other tests
         }
     }
+
+    // F2 regression: once the commit decision is made (RESERVED), a confirm failure must roll
+    // FORWARD, never back. A partially-confirmed order must keep its already-confirmed sale and
+    // wait in CONFIRMING for recovery -- it must NOT be cancelled and marked FAILED.
+    @Test
+    void confirmPhaseFailureRollsForwardNotBackAndKeepsTheSale() {
+        int ticketsBefore = stock(SupplierType.TICKET, "T-001");
+        int drinksBefore = stock(SupplierType.DRINK, "D-001");
+
+        StubSupplierClient drink = (StubSupplierClient) suppliers.get(SupplierType.DRINK);
+        CustomerOrder order = new CustomerOrder("Street 1", "Alice", "4242");
+        order.addItem(new OrderItem(SupplierType.TICKET, "T-001", "Coldplay", new BigDecimal("85.00"), 2));
+        order.addItem(new OrderItem(SupplierType.DRINK, "D-001", "Trappist", new BigDecimal("4.00"), 3));
+        orders.save(order);
+
+        drink.setFailConfirm(true);   // both holds are taken; confirming the drink then fails
+        try {
+            CustomerOrder result = atomicOrder.placeOrder(order.getId());
+
+            // committed order is NOT rolled back: it waits in CONFIRMING for recovery
+            assertEquals(OrderStatus.CONFIRMING, result.getStatus());
+            assertEquals(ItemStatus.CONFIRMED, itemFor(result, SupplierType.TICKET).getStatus()); // sale stands
+            assertEquals(ItemStatus.RESERVED, itemFor(result, SupplierType.DRINK).getStatus());    // still held
+            // nothing was given back: ticket sold (-2), drink still held (-3)
+            assertEquals(ticketsBefore - 2, stock(SupplierType.TICKET, "T-001"));
+            assertEquals(drinksBefore - 3, stock(SupplierType.DRINK, "D-001"));
+        } finally {
+            drink.setFailConfirm(false);
+        }
+
+        // with the drink healthy again, recovery rolls the order forward to a full success
+        atomicOrder.recoverInterruptedOrders();
+        CustomerOrder recovered = orders.findById(order.getId()).orElseThrow();
+        assertEquals(OrderStatus.SUCCEEDED, recovered.getStatus());
+        assertTrue(recovered.getItems().stream().allMatch(i -> i.getStatus() == ItemStatus.CONFIRMED));
+    }
+
+    @Test
+    void outOfStockOnFirstReserveFailsWithNoHolds() {
+        int available = stock(SupplierType.TICKET, "T-002");   // Metallica, scarce
+        CustomerOrder order = new CustomerOrder("Street 1", "Alice", "4242");
+        order.addItem(new OrderItem(SupplierType.TICKET, "T-002", "Metallica", new BigDecimal("120.00"), available + 1));
+        orders.save(order);
+
+        CustomerOrder result = atomicOrder.placeOrder(order.getId());
+
+        assertEquals(OrderStatus.FAILED, result.getStatus());
+        assertTrue(result.getItems().stream().allMatch(i -> i.getStatus() == ItemStatus.FAILED));
+        assertEquals(available, stock(SupplierType.TICKET, "T-002"));   // nothing held
+    }
+
+    @Test
+    void successAcrossAllThreeSupplierTypes() {
+        int t = stock(SupplierType.TICKET, "T-003");
+        int f = stock(SupplierType.FOOD, "F-001");
+        int d = stock(SupplierType.DRINK, "D-002");
+
+        CustomerOrder order = new CustomerOrder("Street 1", "Bob", "1111");
+        order.addItem(new OrderItem(SupplierType.TICKET, "T-003", "Daft Punk", new BigDecimal("95.00"), 1));
+        order.addItem(new OrderItem(SupplierType.FOOD, "F-001", "Nachos", new BigDecimal("6.50"), 2));
+        order.addItem(new OrderItem(SupplierType.DRINK, "D-002", "Cola", new BigDecimal("2.50"), 4));
+        orders.save(order);
+
+        CustomerOrder result = atomicOrder.placeOrder(order.getId());
+
+        assertEquals(OrderStatus.SUCCEEDED, result.getStatus());
+        assertTrue(result.getItems().stream().allMatch(i -> i.getStatus() == ItemStatus.CONFIRMED));
+        assertEquals(t - 1, stock(SupplierType.TICKET, "T-003"));
+        assertEquals(f - 2, stock(SupplierType.FOOD, "F-001"));
+        assertEquals(d - 4, stock(SupplierType.DRINK, "D-002"));
+    }
+
+    private OrderItem itemFor(CustomerOrder order, SupplierType type) {
+        return order.getItems().stream()
+                .filter(i -> i.getSupplierType() == type)
+                .findFirst().orElseThrow();
+    }
 }

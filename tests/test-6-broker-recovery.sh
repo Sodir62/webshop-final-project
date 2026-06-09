@@ -38,7 +38,7 @@ sudo -u postgres psql -d brokerdb <<EOF
 INSERT INTO customer_order (id, status, delivery_address, cardholder_name, card_last4, created_at)
 VALUES ('$ORDER_ID', 'RESERVING', '123 Test St', 'Test User', '1234', NOW());
 
-INSERT INTO order_item (supplier_type, product_id, product_name, unit_price, quantity, reservation_id, status, customer_order_id)
+INSERT INTO order_item (supplier_type, product_id, product_name, unit_price, quantity, reservation_id, status, order_id)
 VALUES ('TICKET', 'T-001', 'Coldplay @ Sportpaleis', 85.00, 1, '$TICKET_RES_ID', 'RESERVED', '$ORDER_ID');
 EOF
 pass "Stuck order inserted (id=$ORDER_ID)"
@@ -88,10 +88,10 @@ sudo -u postgres psql -d brokerdb <<EOF
 INSERT INTO customer_order (id, status, delivery_address, cardholder_name, card_last4, created_at)
 VALUES ('$ORDER2_ID', 'RESERVED', '456 Test Ave', 'Test User2', '5678', NOW());
 
-INSERT INTO order_item (supplier_type, product_id, product_name, unit_price, quantity, reservation_id, status, customer_order_id)
+INSERT INTO order_item (supplier_type, product_id, product_name, unit_price, quantity, reservation_id, status, order_id)
 VALUES ('TICKET', 'T-001', 'Coldplay @ Sportpaleis', 85.00, 1, '$T_ID', 'RESERVED', '$ORDER2_ID');
 
-INSERT INTO order_item (supplier_type, product_id, product_name, unit_price, quantity, reservation_id, status, customer_order_id)
+INSERT INTO order_item (supplier_type, product_id, product_name, unit_price, quantity, reservation_id, status, order_id)
 VALUES ('FOOD', 'F-001', 'Nachos', 6.50, 1, '$F_ID', 'RESERVED', '$ORDER2_ID');
 EOF
 pass "Stuck RESERVED order inserted (id=$ORDER2_ID)"

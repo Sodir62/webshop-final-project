@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<!--
+   Shared page chrome, included by every template:
+     <head th:replace="~{fragments :: head('Page title')}"></head>
+     <header th:replace="~{fragments :: topbar}"></header>
+   Keeps the viewport/charset/favicon/stylesheet and the top navigation in one place.
+-->
+<head th:fragment="head(title)">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${title}">Concert Webshop</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}">
+    <link rel="stylesheet" th:href="@{/style.css}">
+</head>
+<body>
+<header th:fragment="topbar" class="topbar">
+    <div class="topbar-inner">
+        <a class="brand" th:href="@{/}"><span class="brand-mark" aria-hidden="true">🎟</span> Concert Webshop</a>
+        <nav class="nav">
+            <a th:href="@{/}">Shop</a>
+            <a th:href="@{/manager/orders}">Admin</a>
+        </nav>
+    </div>
+</header>
+</body>
+</html>

@@ -1,11 +1,9 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
-<head>
-    <meta charset="UTF-8">
-    <title>Your order</title>
-    <link rel="stylesheet" th:href="@{/style.css}">
-</head>
+<head th:replace="~{fragments :: head('Your order — Concert Webshop')}"></head>
 <body>
+<header th:replace="~{fragments :: topbar}"></header>
+<main class="page">
     <p><a th:href="@{/}">&larr; Back to the shop</a></p>
 
     <header>
@@ -53,5 +51,6 @@
             (card •••• <span th:text="${order.cardLast4}">1234</span>)</div>
         <div class="muted" th:text="'Placed at ' + ${order.createdAt}">placed at</div>
     </section>
+</main>
 </body>
 </html>

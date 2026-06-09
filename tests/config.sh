@@ -11,7 +11,9 @@ TICKET="http://$TICKET_IP:8082"
 FOOD="http://$FOOD_IP:8081"
 
 MANAGER_USER="admin"
-MANAGER_PASS="ChangeMe123"
+# Must match the broker's app.manager.password (committed default "admin"). If the deployment
+# overrides it via the MANAGER_PASSWORD env var, set the same value here.
+MANAGER_PASS="admin"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'

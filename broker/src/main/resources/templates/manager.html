@@ -1,11 +1,9 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
-<head>
-    <meta charset="UTF-8">
-    <title>All orders — manager</title>
-    <link rel="stylesheet" th:href="@{/style.css}">
-</head>
+<head th:replace="~{fragments :: head('All orders — Concert Webshop')}"></head>
 <body>
+<header th:replace="~{fragments :: topbar}"></header>
+<main class="page">
     <header>
         <h1>All orders</h1>
         <p class="muted">Every order placed, newest first.</p>
@@ -39,5 +37,6 @@
             </tbody>
         </table>
     </section>
+</main>
 </body>
 </html>

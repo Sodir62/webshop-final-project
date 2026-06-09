@@ -72,4 +72,32 @@ class OrderControllerTests {
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrlPattern("/orders/*"));
     }
+
+    @Test
+    void drinkPickedWithZeroPortionsIsRejectedNotSilentlyDropped() throws Exception {
+        mvc.perform(post("/orders").with(csrf())
+                        .param("ticketProductId", "T-001")
+                        .param("ticketQty", "1")
+                        .param("drinkProductId", "D-001")      // drink picked...
+                        .param("drinkQty", "0")                // ...but zero portions
+                        .param("deliveryAddress", "Diestsestraat 1, Leuven")
+                        .param("cardholderName", "Alice Smith")
+                        .param("cardLast4", "4242"))
+                .andExpect(status().isOk())
+                .andExpect(view().name("concert"))
+                .andExpect(model().attributeHasFieldErrors("orderForm", "drinkLineConsistent"));
+    }
+
+    @Test
+    void nonNumericCardLast4IsRejected() throws Exception {
+        mvc.perform(post("/orders").with(csrf())
+                        .param("ticketProductId", "T-001")
+                        .param("ticketQty", "1")
+                        .param("deliveryAddress", "Diestsestraat 1, Leuven")
+                        .param("cardholderName", "Alice Smith")
+                        .param("cardLast4", "abcd"))           // not 4 digits -> @Pattern fails
+                .andExpect(status().isOk())
+                .andExpect(view().name("concert"))
+                .andExpect(model().attributeHasFieldErrors("orderForm", "cardLast4"));
+    }
 }
