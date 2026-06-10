@@ -94,7 +94,9 @@ public class OrderQueueListener {
             return null;
         }
         return switch (order.getStatus()) {
-            case CREATED -> atomicOrder.placeOrder(orderId);   // claims it, or no-ops if raced
+            // claims it (or no-ops if raced); transient reserve failures reset it to
+            // CREATED so the next loop iteration tries again
+            case CREATED -> atomicOrder.placeOrder(orderId, true);
             case RESERVED, CONFIRMING -> {
                 atomicOrder.resume(order);
                 yield orders.findById(orderId).orElse(null);

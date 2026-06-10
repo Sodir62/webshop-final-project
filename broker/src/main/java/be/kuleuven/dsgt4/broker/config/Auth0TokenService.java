@@ -5,9 +5,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 
@@ -35,7 +37,12 @@ public class Auth0TokenService {
             @Value("${auth0.m2m.client-id}") String clientId,
             @Value("${auth0.m2m.client-secret}") String clientSecret,
             @Value("${auth0.m2m.audience}") String audience) {
-        this.tokenClient = RestClient.builder().baseUrl(tokenUri).build();
+        // Same timeouts as the supplier calls: getAccessToken() is synchronized, so a
+        // hanging token request would otherwise serialize and block EVERY supplier call.
+        var factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(5));
+        factory.setReadTimeout(Duration.ofSeconds(10));
+        this.tokenClient = RestClient.builder().baseUrl(tokenUri).requestFactory(factory).build();
         this.clientId = clientId;
         this.clientSecret = clientSecret;
         this.audience = audience;

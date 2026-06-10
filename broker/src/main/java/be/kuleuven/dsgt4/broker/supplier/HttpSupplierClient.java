@@ -6,6 +6,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.time.Duration;
 import java.util.List;
@@ -41,7 +42,13 @@ public class HttpSupplierClient implements SupplierClient {
                 .requestFactory(factory);
         if (tokenService != null) {
             builder.requestInterceptor((request, body, execution) -> {
-                request.getHeaders().setBearerAuth(tokenService.getAccessToken());
+                try {
+                    request.getHeaders().setBearerAuth(tokenService.getAccessToken());
+                } catch (Exception e) {
+                    // Auth0 being down must look like any unreachable-supplier failure,
+                    // not escape as a raw RuntimeException past the catches below.
+                    throw new SupplierException("Auth0 M2M token for " + type + " failed: " + e.getMessage());
+                }
                 return execution.execute(request, body);
             });
         }
@@ -62,7 +69,7 @@ public class HttpSupplierClient implements SupplierClient {
                     .body(Product[].class);
             return products == null ? List.of() : List.of(products);
         } catch (RestClientException e) {
-            throw new SupplierException(type + " supplier list failed: " + e.getMessage());
+            throw new SupplierException(reasonOf(e), type + " supplier list failed: " + e.getMessage());
         }
     }
 
@@ -85,7 +92,8 @@ public class HttpSupplierClient implements SupplierClient {
             }
             return response.reservationId();
         } catch (RestClientException e) {
-            throw new SupplierException("reserve " + productId + " x" + quantity + " at " + type + " failed: " + e.getMessage());
+            throw new SupplierException(reasonOf(e),
+                    "reserve " + productId + " x" + quantity + " at " + type + " failed: " + e.getMessage());
         }
     }
 
@@ -94,7 +102,7 @@ public class HttpSupplierClient implements SupplierClient {
         try {
             http.post().uri("/reservations/{id}/confirm", reservationId).retrieve().toBodilessEntity();
         } catch (RestClientException e) {
-            throw new SupplierException("confirm " + reservationId + " at " + type + " failed: " + e.getMessage());
+            throw new SupplierException(reasonOf(e), "confirm " + reservationId + " at " + type + " failed: " + e.getMessage());
         }
     }
 
@@ -103,8 +111,22 @@ public class HttpSupplierClient implements SupplierClient {
         try {
             http.delete().uri("/reservations/{id}", reservationId).retrieve().toBodilessEntity();
         } catch (RestClientException e) {
-            throw new SupplierException("cancel " + reservationId + " at " + type + " failed: " + e.getMessage());
+            throw new SupplierException(reasonOf(e), "cancel " + reservationId + " at " + type + " failed: " + e.getMessage());
         }
+    }
+
+    // HTTP status -> failure class: a 4xx is the supplier answering "no" (permanent);
+    // anything without a usable answer (transport error, timeout, 5xx) is retryable.
+    private static SupplierException.Reason reasonOf(RestClientException e) {
+        if (e instanceof RestClientResponseException response) {
+            return switch (response.getStatusCode().value()) {
+                case 404 -> SupplierException.Reason.NOT_FOUND;
+                case 409 -> SupplierException.Reason.CONFLICT;
+                case 400 -> SupplierException.Reason.INVALID_REQUEST;
+                default -> SupplierException.Reason.UNAVAILABLE;
+            };
+        }
+        return SupplierException.Reason.UNAVAILABLE;
     }
 
     // Wire shapes for the reservation endpoints; kept private since they are an HTTP detail.

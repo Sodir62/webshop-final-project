@@ -50,13 +50,19 @@ public class AtomicOrderService {
         this.completionWindow = completionWindow;
     }
 
+    public CustomerOrder placeOrder(String orderId) {
+        return placeOrder(orderId, false);
+    }
+
     /**
      * Runs the two-phase order and returns it in the state it reached: SUCCEEDED, FAILED,
-     * or CONFIRMING when phase 2 was interrupted (the queue listener / recovery sweep
-     * rolls that forward; confirm is idempotent). Callers that lose the CREATED->RESERVING
-     * claim (concurrent listener, sweep, or double submit) get the current state back.
+     * CONFIRMING when phase 2 was interrupted (the queue listener / recovery sweep rolls
+     * that forward; confirm is idempotent), or -- only with retryTransientReserve -- back
+     * to CREATED when a supplier was merely unreachable during the vote, so a background
+     * retrier can claim it again. Callers that lose the CREATED->RESERVING claim
+     * (concurrent listener, sweep, or double submit) get the current state back.
      */
-    public CustomerOrder placeOrder(String orderId) {
+    public CustomerOrder placeOrder(String orderId, boolean retryTransientReserve) {
         if (orders.transitionStatus(orderId, OrderStatus.CREATED, OrderStatus.RESERVING) == 0) {
             CustomerOrder order = orders.findById(orderId)
                     .orElseThrow(() -> new IllegalArgumentException("no such order " + orderId));
@@ -87,9 +93,17 @@ public class AtomicOrderService {
                 log.info("  reserved {} x{} -> {}", item.getProductId(), item.getQuantity(), reservationId);
             }
         } catch (SupplierException failure) {
-            log.warn("order {} FAILING in reserve phase (\"{}\") -> undoing {} reservation(s)",
+            log.warn("order {} reserve phase hit \"{}\" -> undoing {} reservation(s)",
                     orderId, failure.getMessage(), reserved.size());
             compensate(reserved);
+            if (retryTransientReserve && !failure.isPermanent()) {
+                // The supplier was merely unreachable, not refusing: hand the order back
+                // to the background retrier instead of failing it. Holds whose cancel
+                // also failed just now are covered by the suppliers' reservation TTL.
+                resetForRetry(order);
+                log.warn("order {} reset to CREATED for a retry within its completion window", orderId);
+                return order;
+            }
             markRemainingItemsFailed(order);
             order.setStatus(OrderStatus.FAILED);
             save(order);
@@ -157,8 +171,12 @@ public class AtomicOrderService {
                     save(order);
                     log.info("recovery: order {} rolled forward to SUCCEEDED", order.getId());
                 } catch (SupplierException e) {
-                    log.error("recovery: order {} confirm not possible yet (\"{}\"); will retry next sweep",
-                            order.getId(), e.getMessage());
+                    if (e.isPermanent()) {
+                        resolveLostHold(order, e);
+                    } else {
+                        log.error("recovery: order {} confirm not possible yet (\"{}\"); will retry next sweep",
+                                order.getId(), e.getMessage());
+                    }
                 }
             }
             case CREATED -> {
@@ -173,7 +191,8 @@ public class AtomicOrderService {
                     }
                 } else {
                     log.info("recovery: order {} was CREATED but never processed; running it now", order.getId());
-                    placeOrder(order.getId());
+                    // transient-retryable: a background completion may try again next sweep
+                    placeOrder(order.getId(), true);
                 }
             }
             case RESERVING -> {
@@ -203,6 +222,41 @@ public class AtomicOrderService {
         markRemainingItemsFailed(order);
         save(order);
         return true;
+    }
+
+    // Wind a not-yet-committed order back to CREATED so a background retrier can claim and
+    // run it again: every hold was just cancelled, so all items return to PENDING unheld.
+    private void resetForRetry(CustomerOrder order) {
+        for (OrderItem item : order.getItems()) {
+            item.setStatus(ItemStatus.PENDING);
+            item.setReservationId(null);
+        }
+        order.setStatus(OrderStatus.CREATED);
+        save(order);
+    }
+
+    // A confirm was REFUSED: the hold is gone (TTL-expired, cancelled, unknown), so retrying
+    // can never succeed. With nothing sold yet the abort is externally invisible, so it is
+    // safe despite the commit decision. With part of the order already a permanent sale,
+    // atomicity is genuinely broken (the in-doubt trade-off of the suppliers' TTL) -- keep
+    // the order CONFIRMING and scream for manual reconciliation.
+    private void resolveLostHold(CustomerOrder order, SupplierException refusal) {
+        boolean anySold = order.getItems().stream()
+                .anyMatch(item -> item.getStatus() == ItemStatus.CONFIRMED);
+        if (anySold) {
+            log.error("recovery: order {} confirm REFUSED (\"{}\") but part of it is already sold; "
+                    + "leaving CONFIRMING -- needs manual reconciliation", order.getId(), refusal.getMessage());
+            return;
+        }
+        log.warn("recovery: order {} confirm REFUSED (\"{}\") with nothing sold yet; aborting cleanly",
+                order.getId(), refusal.getMessage());
+        List<OrderItem> held = order.getItems().stream()
+                .filter(item -> item.getStatus() == ItemStatus.RESERVED)
+                .toList();
+        compensate(held);
+        markRemainingItemsFailed(order);
+        order.setStatus(OrderStatus.FAILED);
+        save(order);
     }
 
     // Confirms every RESERVED item

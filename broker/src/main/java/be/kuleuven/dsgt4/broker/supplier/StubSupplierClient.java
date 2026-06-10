@@ -74,14 +74,16 @@ public class StubSupplierClient implements SupplierClient {
         ensureUp();
         Integer available = stock.get(productId);
         if (available == null) {
-            throw new SupplierException("unknown product " + productId + " at " + type);
+            throw new SupplierException(SupplierException.Reason.NOT_FOUND,
+                    "unknown product " + productId + " at " + type);
         }
         if (quantity <= 0) {
-            throw new SupplierException("quantity must be positive, was " + quantity);
+            throw new SupplierException(SupplierException.Reason.INVALID_REQUEST,
+                    "quantity must be positive, was " + quantity);
         }
         if (available < quantity) {
-            throw new SupplierException("out of stock for " + productId
-                    + " (have " + available + ", need " + quantity + ")");
+            throw new SupplierException(SupplierException.Reason.CONFLICT,
+                    "out of stock for " + productId + " (have " + available + ", need " + quantity + ")");
         }
         stock.put(productId, available - quantity);   // hold the stock now
         String reservationId = type + "-" + UUID.randomUUID();
@@ -97,7 +99,9 @@ public class StubSupplierClient implements SupplierClient {
         }
         Reservation r = reservations.get(reservationId);
         if (r == null) {
-            throw new SupplierException("unknown reservation " + reservationId);
+            // mirrors the real suppliers: a vanished hold is a permanent refusal, not an outage
+            throw new SupplierException(SupplierException.Reason.NOT_FOUND,
+                    "unknown reservation " + reservationId);
         }
         // Keep the hold and mark it sold. Idempotent: a second confirm (e.g. the broker
         // retrying it on recovery) just re-sets the flag. Stock was taken at reserve time.
