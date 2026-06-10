@@ -1,5 +1,6 @@
 package be.kuleuven.dsgt4.broker.supplier;
 
+import be.kuleuven.dsgt4.broker.config.Auth0TokenService;
 import be.kuleuven.dsgt4.broker.data.SupplierType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -15,8 +16,9 @@ public class SupplierConfig {
     @Bean
     @Profile("!stub")
     public SupplierClient ticketSupplier(
-            @Value("${suppliers.ticket.base-url}") String baseUrl) {
-        return new HttpSupplierClient(SupplierType.TICKET, baseUrl);
+            @Value("${suppliers.ticket.base-url}") String baseUrl,
+            Auth0TokenService tokenService) {
+        return new HttpSupplierClient(SupplierType.TICKET, baseUrl, tokenService);
     }
 
     @Bean
@@ -33,8 +35,9 @@ public class SupplierConfig {
     @Bean
     @Profile("!stub")
     public SupplierClient foodSupplier(
-            @Value("${suppliers.food.base-url}") String baseUrl) {
-        return new HttpSupplierClient(SupplierType.FOOD, baseUrl);
+            @Value("${suppliers.food.base-url}") String baseUrl,
+            Auth0TokenService tokenService) {
+        return new HttpSupplierClient(SupplierType.FOOD, baseUrl, tokenService);
     }
 
     @Bean
@@ -50,8 +53,9 @@ public class SupplierConfig {
     @Bean
     @Profile("!stub")
     public SupplierClient drinkSupplier(
-            @Value("${suppliers.drink.base-url}") String baseUrl) {
-        return new HttpSupplierClient(SupplierType.DRINK, baseUrl);
+            @Value("${suppliers.drink.base-url}") String baseUrl,
+            Auth0TokenService tokenService) {
+        return new HttpSupplierClient(SupplierType.DRINK, baseUrl, tokenService);
     }
 
     @Bean

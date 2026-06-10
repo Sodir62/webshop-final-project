@@ -7,10 +7,10 @@ import be.kuleuven.dsgt4.broker.data.SupplierType;
 import be.kuleuven.dsgt4.broker.supplier.Product;
 import be.kuleuven.dsgt4.broker.supplier.SupplierException;
 import be.kuleuven.dsgt4.broker.supplier.SupplierRegistry;
-import be.kuleuven.dsgt4.broker.transaction.AtomicOrderService;
 import jakarta.validation.Valid;
 import java.util.Optional;
 import org.springframework.http.HttpStatus;
+import org.springframework.jms.core.JmsTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.util.StringUtils;
@@ -31,12 +31,12 @@ public class OrderController {
 
     private final CustomerOrderRepository orders;
     private final SupplierRegistry suppliers;
-    private final AtomicOrderService atomicOrder;
+    private final JmsTemplate jms;
 
-    public OrderController(CustomerOrderRepository orders, SupplierRegistry suppliers, AtomicOrderService atomicOrder) {
+    public OrderController(CustomerOrderRepository orders, SupplierRegistry suppliers, JmsTemplate jms) {
         this.orders = orders;
         this.suppliers = suppliers;
-        this.atomicOrder = atomicOrder;
+        this.jms = jms;
     }
 
     // The order page for one concert: the concert is fixed by the URL, the form binds the rest.
@@ -66,8 +66,8 @@ public class OrderController {
             addLine(order, SupplierType.DRINK, form.getDrinkProductId(), form.getDrinkQty());
         }
 
-        orders.save(order);                        
-        atomicOrder.placeOrder(order.getId());     
+        orders.save(order);
+        jms.convertAndSend("order-queue", order.getId());
         return "redirect:/orders/" + order.getId();   
     }
 

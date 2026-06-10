@@ -1,5 +1,6 @@
 package be.kuleuven.dsgt4.broker.supplier;
 
+import be.kuleuven.dsgt4.broker.config.Auth0TokenService;
 import be.kuleuven.dsgt4.broker.data.SupplierType;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -28,7 +29,7 @@ public class HttpSupplierClient implements SupplierClient {
     private final SupplierType type;
     private final RestClient http;
 
-    public HttpSupplierClient(SupplierType type, String baseUrl) {
+    public HttpSupplierClient(SupplierType type, String baseUrl, Auth0TokenService tokenService) {
         this.type = type;
         var factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(Duration.ofSeconds(5));
@@ -36,6 +37,10 @@ public class HttpSupplierClient implements SupplierClient {
         this.http = RestClient.builder()
                 .baseUrl(baseUrl)
                 .requestFactory(factory)
+                .requestInterceptor((request, body, execution) -> {
+                    request.getHeaders().setBearerAuth(tokenService.getAccessToken());
+                    return execution.execute(request, body);
+                })
                 .build();
     }
 

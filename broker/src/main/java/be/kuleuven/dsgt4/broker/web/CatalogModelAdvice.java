@@ -6,6 +6,8 @@ import be.kuleuven.dsgt4.broker.supplier.SupplierException;
 import be.kuleuven.dsgt4.broker.supplier.SupplierRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ModelAttribute;
 
@@ -44,6 +46,11 @@ public class CatalogModelAdvice {
     @ModelAttribute("drinks")
     public List<Product> drinks() {
         return safeList(SupplierType.DRINK);
+    }
+
+    @ModelAttribute("username")
+    public String username(@AuthenticationPrincipal OidcUser user) {
+        return user != null ? user.getName() : null;
     }
 
     private List<Product> safeList(SupplierType type) {

@@ -110,7 +110,7 @@ public class AtomicOrderService {
      */
     public int recoverInterruptedOrders() {
         List<CustomerOrder> stuck = orders.findByStatusIn(
-                List.of(OrderStatus.RESERVING, OrderStatus.RESERVED, OrderStatus.CONFIRMING));
+                List.of(OrderStatus.CREATED, OrderStatus.RESERVING, OrderStatus.RESERVED, OrderStatus.CONFIRMING));
         if (!stuck.isEmpty()) {
             log.warn("recovery: {} interrupted order(s) to resume", stuck.size());
         }
@@ -156,6 +156,10 @@ public class AtomicOrderService {
                     log.error("recovery: order {} confirm exhausted retries; will retry next cycle",
                             order.getId());
                 }
+            }
+            case CREATED -> {
+                log.info("recovery: order {} was CREATED but never processed; running now", order.getId());
+                placeOrder(order.getId());
             }
             case RESERVING -> {
                 List<OrderItem> held = order.getItems().stream()

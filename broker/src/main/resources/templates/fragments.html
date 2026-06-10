@@ -20,6 +20,10 @@
         <nav class="nav">
             <a th:href="@{/}">Shop</a>
             <a th:href="@{/manager/orders}">Admin</a>
+            <span th:if="${username != null}" th:text="'Hello, ' + ${username}"></span>
+            <form th:if="${username != null}" th:action="@{/logout}" method="post" style="display:inline;">
+                <button type="submit" class="linkbtn">Logout</button>
+            </form>
         </nav>
     </div>
 </header>

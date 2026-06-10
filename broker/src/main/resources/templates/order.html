@@ -52,5 +52,11 @@
         <div class="muted" th:text="'Placed at ' + ${order.createdAt}">placed at</div>
     </section>
 </main>
+<script th:inline="javascript">
+    var status = /*[[${order.status.name()}]]*/ 'CREATED';
+    if (status !== 'SUCCEEDED' && status !== 'FAILED') {
+        setTimeout(function() { location.reload(); }, 5000);
+    }
+</script>
 </body>
 </html>

@@ -45,6 +45,9 @@
 .DS_Store
 Thumbs.db
 
+### Secrets ###
+.env
+
 ### Misc ###
 HELP.md
 *.log
