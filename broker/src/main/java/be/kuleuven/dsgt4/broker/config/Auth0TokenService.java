@@ -35,7 +35,7 @@ public class Auth0TokenService {
     }
 
     public synchronized String getAccessToken() {
-        if (Instant.now().isBefore(tokenExpiry.minusSeconds(30))) {
+        if (cachedToken != null && Instant.now().isBefore(tokenExpiry.minusSeconds(30))) {
             return cachedToken;
         }
         Map<String, String> body = Map.of(
