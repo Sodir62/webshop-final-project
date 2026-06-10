@@ -51,3 +51,6 @@ Thumbs.db
 ### Misc ###
 HELP.md
 *.log
+
+### Report (generated; build with `typst compile report/main.typ`) ###
+report/main.pdf
