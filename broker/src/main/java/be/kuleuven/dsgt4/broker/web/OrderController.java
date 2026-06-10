@@ -7,10 +7,10 @@ import be.kuleuven.dsgt4.broker.data.SupplierType;
 import be.kuleuven.dsgt4.broker.supplier.Product;
 import be.kuleuven.dsgt4.broker.supplier.SupplierException;
 import be.kuleuven.dsgt4.broker.supplier.SupplierRegistry;
+import be.kuleuven.dsgt4.broker.transaction.OrderProcessor;
 import jakarta.validation.Valid;
 import java.util.Optional;
 import org.springframework.http.HttpStatus;
-import org.springframework.jms.core.JmsTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.util.StringUtils;
@@ -22,21 +22,23 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.server.ResponseStatusException;
 
 /*
-   Places an order and shows one. On submit the order is built server-side,
-   saved as CREATED, then run through the two-phase reserve->confirm a
-   cross suppliers by AtomicOrderService; it ends SUCCEEDED, or FAILED with any held items released.
+   Places an order and shows one. On submit the order is built server-side, saved as
+   CREATED, then handed to the OrderProcessor: the default profile runs the two-phase
+   reserve->confirm across suppliers in this request; the 'async' profile enqueues it
+   and the order page shows it progressing. Either way it ends SUCCEEDED, or FAILED
+   with any held items released.
 */
 @Controller
 public class OrderController {
 
     private final CustomerOrderRepository orders;
     private final SupplierRegistry suppliers;
-    private final JmsTemplate jms;
+    private final OrderProcessor orderProcessor;
 
-    public OrderController(CustomerOrderRepository orders, SupplierRegistry suppliers, JmsTemplate jms) {
+    public OrderController(CustomerOrderRepository orders, SupplierRegistry suppliers, OrderProcessor orderProcessor) {
         this.orders = orders;
         this.suppliers = suppliers;
-        this.jms = jms;
+        this.orderProcessor = orderProcessor;
     }
 
     // The order page for one concert: the concert is fixed by the URL, the form binds the rest.
@@ -67,8 +69,8 @@ public class OrderController {
         }
 
         orders.save(order);
-        jms.convertAndSend("order-queue", order.getId());
-        return "redirect:/orders/" + order.getId();   
+        orderProcessor.process(order.getId());
+        return "redirect:/orders/" + order.getId();
     }
 
     @GetMapping("/orders/{id}")

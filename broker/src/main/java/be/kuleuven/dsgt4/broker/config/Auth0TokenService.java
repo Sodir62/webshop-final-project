@@ -3,6 +3,7 @@ package be.kuleuven.dsgt4.broker.config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -10,7 +11,13 @@ import org.springframework.web.client.RestClient;
 import java.time.Instant;
 import java.util.Map;
 
+/*
+   Fetches and caches the Auth0 M2M (client_credentials) token the broker presents to the
+   suppliers. Only exists under the 'auth0' profile; without it the broker calls the
+   suppliers without a bearer token and their open '!auth0' chain accepts that.
+*/
 @Component
+@Profile("auth0")
 public class Auth0TokenService {
 
     private static final Logger log = LoggerFactory.getLogger(Auth0TokenService.class);

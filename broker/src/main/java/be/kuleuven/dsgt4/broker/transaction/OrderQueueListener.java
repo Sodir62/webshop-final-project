@@ -5,6 +5,7 @@ import be.kuleuven.dsgt4.broker.data.CustomerOrderRepository;
 import be.kuleuven.dsgt4.broker.data.OrderStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Profile;
 import org.springframework.jms.annotation.JmsListener;
 import org.springframework.stereotype.Component;
 
@@ -12,6 +13,7 @@ import java.time.Duration;
 import java.time.Instant;
 
 @Component
+@Profile("async")
 public class OrderQueueListener {
 
     private static final Logger log = LoggerFactory.getLogger(OrderQueueListener.class);
@@ -25,7 +27,7 @@ public class OrderQueueListener {
         this.orders = orders;
     }
 
-    @JmsListener(destination = "order-queue")
+    @JmsListener(destination = OrderProcessingConfig.ORDER_QUEUE)
     public void processOrder(String orderId) {
         log.info("dequeued order {} for processing", orderId);
         Instant deadline = Instant.now().plus(MAX_RETRY_WINDOW);

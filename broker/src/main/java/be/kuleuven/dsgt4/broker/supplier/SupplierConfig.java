@@ -2,6 +2,7 @@ package be.kuleuven.dsgt4.broker.supplier;
 
 import be.kuleuven.dsgt4.broker.config.Auth0TokenService;
 import be.kuleuven.dsgt4.broker.data.SupplierType;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -10,6 +11,12 @@ import org.springframework.context.annotation.Profile;
 import java.math.BigDecimal;
 import java.util.List;
 
+/*
+   Wires one SupplierClient per supplier type: the in-process stub under the 'stub'
+   profile (tests), HTTP clients otherwise. Auth0TokenService only exists under the
+   'auth0' profile, so it is injected as a provider; without it the HTTP clients send
+   no bearer token (matching the suppliers' open chain).
+*/
 @Configuration
 public class SupplierConfig {
 
@@ -17,8 +24,8 @@ public class SupplierConfig {
     @Profile("!stub")
     public SupplierClient ticketSupplier(
             @Value("${suppliers.ticket.base-url}") String baseUrl,
-            Auth0TokenService tokenService) {
-        return new HttpSupplierClient(SupplierType.TICKET, baseUrl, tokenService);
+            ObjectProvider<Auth0TokenService> tokenService) {
+        return new HttpSupplierClient(SupplierType.TICKET, baseUrl, tokenService.getIfAvailable());
     }
 
     @Bean
@@ -36,8 +43,8 @@ public class SupplierConfig {
     @Profile("!stub")
     public SupplierClient foodSupplier(
             @Value("${suppliers.food.base-url}") String baseUrl,
-            Auth0TokenService tokenService) {
-        return new HttpSupplierClient(SupplierType.FOOD, baseUrl, tokenService);
+            ObjectProvider<Auth0TokenService> tokenService) {
+        return new HttpSupplierClient(SupplierType.FOOD, baseUrl, tokenService.getIfAvailable());
     }
 
     @Bean
@@ -54,8 +61,8 @@ public class SupplierConfig {
     @Profile("!stub")
     public SupplierClient drinkSupplier(
             @Value("${suppliers.drink.base-url}") String baseUrl,
-            Auth0TokenService tokenService) {
-        return new HttpSupplierClient(SupplierType.DRINK, baseUrl, tokenService);
+            ObjectProvider<Auth0TokenService> tokenService) {
+        return new HttpSupplierClient(SupplierType.DRINK, baseUrl, tokenService.getIfAvailable());
     }
 
     @Bean

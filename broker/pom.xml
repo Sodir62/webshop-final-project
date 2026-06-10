@@ -54,7 +54,8 @@
 			<artifactId>spring-boot-starter-oauth2-client</artifactId>
 		</dependency>
 
-		<!-- JMS: embedded ActiveMQ Artemis for async order processing -->
+		<!-- JMS: embedded ActiveMQ Artemis for async order processing ('async' profile).
+		     The server artifact is what makes spring.artemis.mode=embedded possible. -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-artemis</artifactId>

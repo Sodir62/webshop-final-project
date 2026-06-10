@@ -3,76 +3,55 @@ package be.kuleuven.dsgt4.broker.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
-import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserService;
-import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
-import org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser;
-import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
-
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
 
 import static org.springframework.security.config.Customizer.withDefaults;
 
+/*
+   Basic-level security (the default; the 'auth0' profile swaps in Auth0SecurityConfig).
+   Only /manager/** is protected; customers shop with no login. The manager authenticates
+   with HTTP Basic against a single in-memory MANAGER user whose credentials come from
+   application.properties (not hardcoded). CSRF stays enabled -- the Thymeleaf order form
+   (th:action) gets a token automatically, so the browser flow is unaffected.
+*/
 @Configuration
 @EnableWebSecurity
+@Profile("!auth0")
 public class SecurityConfig {
-
-    @Value("${spring.security.oauth2.client.provider.auth0.issuer-uri}")
-    private String issuerUri;
-
-    @Value("${spring.security.oauth2.client.registration.auth0.client-id}")
-    private String clientId;
-
-    @Value("${auth0.claims.namespace}")
-    private String claimsNamespace;
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/style.css", "/favicon.svg", "/error").permitAll()
                         .requestMatchers("/manager/**").hasRole("MANAGER")
-                        .anyRequest().authenticated())
-                .oauth2Login(withDefaults())
-                .logout(logout -> logout
-                        .logoutSuccessHandler(auth0LogoutHandler()));
+                        .anyRequest().permitAll())
+                .httpBasic(withDefaults());
         return http.build();
     }
 
     @Bean
-    public OAuth2UserService<OidcUserRequest, OidcUser> oidcUserService() {
-        final OidcUserService delegate = new OidcUserService();
-        return userRequest -> {
-            OidcUser oidcUser = delegate.loadUser(userRequest);
-            Set<GrantedAuthority> authorities = new HashSet<>(oidcUser.getAuthorities());
-            @SuppressWarnings("unchecked")
-            List<String> roles = (List<String>) oidcUser.getClaims().get(claimsNamespace + "/roles");
-            if (roles != null) {
-                for (String role : roles) {
-                    authorities.add(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()));
-                }
-            }
-            return new DefaultOidcUser(authorities, oidcUser.getIdToken(), oidcUser.getUserInfo());
-        };
+    PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
     }
 
-    private LogoutSuccessHandler auth0LogoutHandler() {
-        return (request, response, authentication) -> {
-            String returnTo = request.getScheme() + "://" + request.getServerName()
-                    + ":" + request.getServerPort() + "/";
-            String logoutUrl = issuerUri + "v2/logout?client_id=" + clientId
-                    + "&returnTo=" + URLEncoder.encode(returnTo, StandardCharsets.UTF_8);
-            response.sendRedirect(logoutUrl);
-        };
+    @Bean
+    InMemoryUserDetailsManager userDetailsService(
+            PasswordEncoder encoder,
+            @Value("${app.manager.username}") String username,
+            @Value("${app.manager.password}") String password) {
+        UserDetails manager = User.builder()
+                .username(username)
+                .password(encoder.encode(password))
+                .roles("MANAGER")
+                .build();
+        return new InMemoryUserDetailsManager(manager);
     }
 }
