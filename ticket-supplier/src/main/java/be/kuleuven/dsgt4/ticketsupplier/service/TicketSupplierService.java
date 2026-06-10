@@ -7,9 +7,12 @@ import be.kuleuven.dsgt4.ticketsupplier.data.TicketReservationRepository;
 import be.kuleuven.dsgt4.ticketsupplier.data.ReservationStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 
 @Service
@@ -18,9 +21,17 @@ public class TicketSupplierService {
     private static final Logger log = LoggerFactory.getLogger(TicketSupplierService.class);
     private final TicketProductRepository products;
     private final TicketReservationRepository reservations;
-    public TicketSupplierService(TicketProductRepository products, TicketReservationRepository reservations) {
+    private final Duration reservationTtl;
+
+    // The TTL is the safety net for holds whose broker died before confirm/cancel ever
+    // arrived: ReservationCleanupTask releases them. It must stay well above the broker's
+    // 15-minute order-completion window -- a hold may legitimately be confirmed that late,
+    // and expiring earlier would void the hold of an already-committed order.
+    public TicketSupplierService(TicketProductRepository products, TicketReservationRepository reservations,
+                                 @Value("${supplier.reservation.ttl:60m}") Duration reservationTtl) {
         this.products = products;
         this.reservations = reservations;
+        this.reservationTtl = reservationTtl;
     }
     @Transactional(readOnly = true)
     public List<TicketProduct> listProducts() {
@@ -40,7 +51,8 @@ public class TicketSupplierService {
                     "out of stock for " + productId + " (have " + product.getStock() + ", need " + quantity + ")");
         }
         product.setStock(product.getStock() - quantity);
-        TicketReservation reservation = reservations.save(new TicketReservation(productId, quantity));
+        TicketReservation reservation = reservations.save(
+                new TicketReservation(productId, quantity, Instant.now().plus(reservationTtl)));
         log.info("reserved {} x{} -> {}", productId, quantity, reservation.getId());
         return reservation;
     }

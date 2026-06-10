@@ -47,6 +47,18 @@ class CustomerOrderRepositoryTests {
         assertEquals(new BigDecimal("182.00"), loaded.total());   // 85.00*2 + 4.00*3
     }
 
+    // The status CAS that makes an order single-executor: of concurrent claimers, exactly
+    // one transition matches the row; everyone else updates nothing.
+    @Test
+    void statusTransitionIsASingleWinnerCas() {
+        CustomerOrder order = new CustomerOrder("Some street 1", "Alice Smith", "4242");
+        repository.saveAndFlush(order);
+
+        assertEquals(1, repository.transitionStatus(order.getId(), OrderStatus.CREATED, OrderStatus.RESERVING));
+        assertEquals(0, repository.transitionStatus(order.getId(), OrderStatus.CREATED, OrderStatus.RESERVING));
+        assertEquals(OrderStatus.RESERVING, repository.findById(order.getId()).orElseThrow().getStatus());
+    }
+
     // --- Negative tests: prove the database REJECTS bad data ----------------------
 
     @Test

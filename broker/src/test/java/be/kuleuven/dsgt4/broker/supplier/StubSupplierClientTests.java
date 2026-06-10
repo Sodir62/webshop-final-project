@@ -8,6 +8,9 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StubSupplierClientTests {
 
@@ -36,6 +39,24 @@ class StubSupplierClientTests {
         s.confirm(id);
         s.cancel(id);                                  // the sale is final
         assertEquals(7, stock(s));                     // so the stock is NOT given back
+    }
+
+    // The failure classes the retry/recovery logic decides on (mirrors the real suppliers).
+    @Test
+    void outOfStockIsAPermanentConflict() {
+        StubSupplierClient s = supplier();
+        SupplierException e = assertThrows(SupplierException.class, () -> s.reserve("F-001", 11));
+        assertEquals(SupplierException.Reason.CONFLICT, e.reason());
+        assertTrue(e.isPermanent());
+    }
+
+    @Test
+    void downedSupplierIsTransientlyUnavailable() {
+        StubSupplierClient s = supplier();
+        s.setDown(true);
+        SupplierException e = assertThrows(SupplierException.class, () -> s.reserve("F-001", 1));
+        assertEquals(SupplierException.Reason.UNAVAILABLE, e.reason());
+        assertFalse(e.isPermanent());
     }
 
     @Test

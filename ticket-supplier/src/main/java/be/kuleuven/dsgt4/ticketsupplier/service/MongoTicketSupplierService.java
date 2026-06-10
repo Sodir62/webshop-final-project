@@ -7,6 +7,7 @@ import be.kuleuven.dsgt4.ticketsupplier.data.MongoTicketReservationRepository;
 import be.kuleuven.dsgt4.ticketsupplier.data.ReservationStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -14,6 +15,8 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 
 /*
@@ -45,13 +48,20 @@ public class MongoTicketSupplierService {
     private final MongoTicketProductRepository products;
     private final MongoTicketReservationRepository reservations;
     private final MongoTemplate mongoTemplate;
+    private final Duration reservationTtl;
 
+    // The TTL is the safety net for holds whose broker died before confirm/cancel ever
+    // arrived: MongoReservationCleanupTask releases them. It must stay well above the
+    // broker's 15-minute order-completion window -- a hold may legitimately be confirmed
+    // that late, and expiring earlier would void the hold of an already-committed order.
     public MongoTicketSupplierService(MongoTicketProductRepository products,
                                       MongoTicketReservationRepository reservations,
-                                      MongoTemplate mongoTemplate) {
+                                      MongoTemplate mongoTemplate,
+                                      @Value("${supplier.reservation.ttl:60m}") Duration reservationTtl) {
         this.products = products;
         this.reservations = reservations;
         this.mongoTemplate = mongoTemplate;
+        this.reservationTtl = reservationTtl;
     }
 
     public List<MongoTicketProduct> listProducts() {
@@ -76,7 +86,8 @@ public class MongoTicketSupplierService {
             throw new TicketSupplierException(TicketSupplierException.Reason.CONFLICT,
                     "out of stock for " + productId);
         }
-        MongoTicketReservation reservation = reservations.save(new MongoTicketReservation(productId, quantity));
+        MongoTicketReservation reservation = reservations.save(
+                new MongoTicketReservation(productId, quantity, Instant.now().plus(reservationTtl)));
         log.info("reserved {} x{} -> {}", productId, quantity, reservation.getId());
         return reservation;
     }

@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -147,6 +148,80 @@ class AtomicOrderServiceTests {
         assertEquals(t - 1, stock(SupplierType.TICKET, "T-003"));
         assertEquals(f - 2, stock(SupplierType.FOOD, "F-001"));
         assertEquals(d - 4, stock(SupplierType.DRINK, "D-002"));
+    }
+
+    // Re-entrancy regression: a retrier calling placeOrder on an order that is already
+    // mid-flight (here: stuck CONFIRMING) must be a no-op -- the CREATED->RESERVING claim
+    // fails -- and must never reserve the items a second time.
+    @Test
+    void reEnteringAnInFlightOrderNeverReReserves() {
+        StubSupplierClient drink = (StubSupplierClient) suppliers.get(SupplierType.DRINK);
+        CustomerOrder order = new CustomerOrder("Street 1", "Alice", "4242");
+        order.addItem(new OrderItem(SupplierType.TICKET, "T-001", "Coldplay", new BigDecimal("85.00"), 2));
+        order.addItem(new OrderItem(SupplierType.DRINK, "D-001", "Trappist", new BigDecimal("4.00"), 3));
+        orders.save(order);
+
+        drink.setFailConfirm(true);
+        try {
+            atomicOrder.placeOrder(order.getId());   // ends CONFIRMING: ticket sold, drink held
+            CustomerOrder inFlight = orders.findById(order.getId()).orElseThrow();
+            String ticketHold = itemFor(inFlight, SupplierType.TICKET).getReservationId();
+            int tickets = stock(SupplierType.TICKET, "T-001");
+            int drinks = stock(SupplierType.DRINK, "D-001");
+
+            CustomerOrder again = atomicOrder.placeOrder(order.getId());
+
+            assertEquals(OrderStatus.CONFIRMING, again.getStatus());
+            assertEquals(ticketHold, itemFor(again, SupplierType.TICKET).getReservationId());
+            assertEquals(tickets, stock(SupplierType.TICKET, "T-001"));   // not reserved twice
+            assertEquals(drinks, stock(SupplierType.DRINK, "D-001"));
+        } finally {
+            drink.setFailConfirm(false);
+        }
+    }
+
+    // Background completion ('async'): a supplier that is merely unreachable must not fail
+    // the order -- it is wound back to CREATED (holds released, items unheld) so the
+    // listener can claim and run it again, and that retry then succeeds.
+    @Test
+    void transientReserveFailureResetsForRetryAndTheRetrySucceeds() {
+        int ticketsBefore = stock(SupplierType.TICKET, "T-001");
+        StubSupplierClient drink = (StubSupplierClient) suppliers.get(SupplierType.DRINK);
+        CustomerOrder order = new CustomerOrder("Street 1", "Alice", "4242");
+        order.addItem(new OrderItem(SupplierType.TICKET, "T-001", "Coldplay", new BigDecimal("85.00"), 2));
+        order.addItem(new OrderItem(SupplierType.DRINK, "D-001", "Trappist", new BigDecimal("4.00"), 3));
+        orders.save(order);
+
+        drink.setDown(true);
+        try {
+            CustomerOrder result = atomicOrder.placeOrder(order.getId(), true);
+
+            assertEquals(OrderStatus.CREATED, result.getStatus());
+            assertTrue(result.getItems().stream().allMatch(i -> i.getStatus() == ItemStatus.PENDING));
+            assertNull(itemFor(result, SupplierType.TICKET).getReservationId());
+            assertEquals(ticketsBefore, stock(SupplierType.TICKET, "T-001"));   // nothing leaked
+        } finally {
+            drink.setDown(false);
+        }
+
+        CustomerOrder retried = atomicOrder.placeOrder(order.getId(), true);
+        assertEquals(OrderStatus.SUCCEEDED, retried.getStatus());
+        assertEquals(ticketsBefore - 2, stock(SupplierType.TICKET, "T-001"));
+    }
+
+    // A permanent refusal (out of stock) must fail immediately even on the retrying path:
+    // retrying cannot change the supplier's answer.
+    @Test
+    void permanentReserveFailureFailsEvenWithRetryEnabled() {
+        int available = stock(SupplierType.TICKET, "T-002");
+        CustomerOrder order = new CustomerOrder("Street 1", "Alice", "4242");
+        order.addItem(new OrderItem(SupplierType.TICKET, "T-002", "Metallica", new BigDecimal("120.00"), available + 1));
+        orders.save(order);
+
+        CustomerOrder result = atomicOrder.placeOrder(order.getId(), true);
+
+        assertEquals(OrderStatus.FAILED, result.getStatus());
+        assertEquals(available, stock(SupplierType.TICKET, "T-002"));
     }
 
     private OrderItem itemFor(CustomerOrder order, SupplierType type) {

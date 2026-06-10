@@ -82,6 +82,69 @@ class OrderRecoveryTests {
         assertEquals(before, stock(SupplierType.TICKET, "T-001"));   // hold cancelled -> stock restored
     }
 
+    // A confirm that is REFUSED (the hold vanished: TTL-expired or cancelled at the
+    // supplier) can never succeed by retrying. With nothing sold yet, recovery aborts
+    // cleanly -- externally invisible despite the commit decision.
+    @Test
+    void refusedConfirmWithNothingSoldAbortsCleanly() {
+        int ticketsBefore = stock(SupplierType.TICKET, "T-001");
+        int drinksBefore = stock(SupplierType.DRINK, "D-001");
+        String ticketHold = suppliers.get(SupplierType.TICKET).reserve("T-001", 2);
+        String drinkHold = suppliers.get(SupplierType.DRINK).reserve("D-001", 3);
+        suppliers.get(SupplierType.TICKET).cancel(ticketHold);   // vanishes behind the broker's back
+
+        CustomerOrder order = new CustomerOrder("Street 1", "Alice", "4242");
+        OrderItem t = new OrderItem(SupplierType.TICKET, "T-001", "Coldplay", new BigDecimal("85.00"), 2);
+        OrderItem d = new OrderItem(SupplierType.DRINK, "D-001", "Trappist", new BigDecimal("4.00"), 3);
+        order.addItem(t);
+        order.addItem(d);
+        t.setReservationId(ticketHold);
+        t.setStatus(ItemStatus.RESERVED);
+        d.setReservationId(drinkHold);
+        d.setStatus(ItemStatus.RESERVED);
+        order.setStatus(OrderStatus.CONFIRMING);
+        orders.saveAndFlush(order);
+
+        atomicOrder.recoverInterruptedOrders();
+
+        CustomerOrder recovered = orders.findById(order.getId()).orElseThrow();
+        assertEquals(OrderStatus.FAILED, recovered.getStatus());
+        assertEquals(ticketsBefore, stock(SupplierType.TICKET, "T-001"));   // given back at its cancel
+        assertEquals(drinksBefore, stock(SupplierType.DRINK, "D-001"));     // released by the abort
+    }
+
+    // Same refusal, but part of the order is already a permanent sale: aborting would
+    // discard a paid sale, retrying can never finish. Recovery must leave it CONFIRMING
+    // for manual reconciliation -- and must not loop on it destructively.
+    @Test
+    void refusedConfirmAfterAPartialSaleLeavesConfirmingForReconciliation() {
+        int ticketsBefore = stock(SupplierType.TICKET, "T-001");
+        int drinksBefore = stock(SupplierType.DRINK, "D-001");
+        String ticketHold = suppliers.get(SupplierType.TICKET).reserve("T-001", 2);
+        suppliers.get(SupplierType.TICKET).confirm(ticketHold);   // already a permanent sale
+        String drinkHold = suppliers.get(SupplierType.DRINK).reserve("D-001", 3);
+        suppliers.get(SupplierType.DRINK).cancel(drinkHold);      // vanishes behind the broker's back
+
+        CustomerOrder order = new CustomerOrder("Street 1", "Alice", "4242");
+        OrderItem t = new OrderItem(SupplierType.TICKET, "T-001", "Coldplay", new BigDecimal("85.00"), 2);
+        OrderItem d = new OrderItem(SupplierType.DRINK, "D-001", "Trappist", new BigDecimal("4.00"), 3);
+        order.addItem(t);
+        order.addItem(d);
+        t.setReservationId(ticketHold);
+        t.setStatus(ItemStatus.CONFIRMED);
+        d.setReservationId(drinkHold);
+        d.setStatus(ItemStatus.RESERVED);
+        order.setStatus(OrderStatus.CONFIRMING);
+        orders.saveAndFlush(order);
+
+        atomicOrder.recoverInterruptedOrders();
+
+        CustomerOrder recovered = orders.findById(order.getId()).orElseThrow();
+        assertEquals(OrderStatus.CONFIRMING, recovered.getStatus());   // neither FAILED nor SUCCEEDED
+        assertEquals(ticketsBefore - 2, stock(SupplierType.TICKET, "T-001"));   // the sale stands
+        assertEquals(drinksBefore, stock(SupplierType.DRINK, "D-001"));         // restored at its cancel
+    }
+
     @Test
     void rollsForwardFromConfirmingState() {
         int before = stock(SupplierType.TICKET, "T-001");

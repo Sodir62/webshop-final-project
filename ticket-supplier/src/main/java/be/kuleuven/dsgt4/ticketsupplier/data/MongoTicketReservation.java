@@ -3,7 +3,6 @@ package be.kuleuven.dsgt4.ticketsupplier.data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -19,14 +18,17 @@ public class MongoTicketReservation {
     private int quantity;
     private ReservationStatus status = ReservationStatus.PENDING;
     private Instant createdAt = Instant.now();
-    private Instant expiresAt = Instant.now().plus(Duration.ofMinutes(20));
+    // When the hold self-releases if never confirmed/cancelled; set by the service
+    // from the supplier.reservation.ttl property.
+    private Instant expiresAt;
 
     public MongoTicketReservation() {
     }
 
-    public MongoTicketReservation(String productId, int quantity) {
+    public MongoTicketReservation(String productId, int quantity, Instant expiresAt) {
         this.productId = productId;
         this.quantity = quantity;
+        this.expiresAt = expiresAt;
     }
 
     public String getId() { return id; }

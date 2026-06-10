@@ -6,7 +6,6 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -37,14 +36,17 @@ public class Reservation {
     @Column(nullable = false)
     private Instant createdAt = Instant.now();
 
-    private Instant expiresAt = Instant.now().plus(Duration.ofMinutes(20));
+    // When the hold self-releases if never confirmed/cancelled; set by the service
+    // from the supplier.reservation.ttl property.
+    private Instant expiresAt;
 
     protected Reservation() {
     }
 
-    public Reservation(String productId, int quantity) {
+    public Reservation(String productId, int quantity, Instant expiresAt) {
         this.productId = productId;
         this.quantity = quantity;
+        this.expiresAt = expiresAt;
     }
 
     public String getId() {

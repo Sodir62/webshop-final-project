@@ -8,9 +8,12 @@ import be.kuleuven.dsgt4.food_and_beverages.data.ReservationRepository;
 import be.kuleuven.dsgt4.food_and_beverages.data.ReservationStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 
 /*
@@ -28,10 +31,17 @@ public class SupplierService {
 
     private final ProductRepository products;
     private final ReservationRepository reservations;
+    private final Duration reservationTtl;
 
-    public SupplierService(ProductRepository products, ReservationRepository reservations) {
+    // The TTL is the safety net for holds whose broker died before confirm/cancel ever
+    // arrived: ReservationCleanupTask releases them. It must stay well above the broker's
+    // 15-minute order-completion window -- a hold may legitimately be confirmed that late,
+    // and expiring earlier would void the hold of an already-committed order.
+    public SupplierService(ProductRepository products, ReservationRepository reservations,
+                           @Value("${supplier.reservation.ttl:60m}") Duration reservationTtl) {
         this.products = products;
         this.reservations = reservations;
+        this.reservationTtl = reservationTtl;
     }
 
     // List the catalog. With no category the whole catalog is returned; with FOOD or DRINK
@@ -57,7 +67,8 @@ public class SupplierService {
                     "out of stock for " + productId + " (have " + product.getStock() + ", need " + quantity + ")");
         }
         product.setStock(product.getStock() - quantity);   // hold the stock now
-        Reservation reservation = reservations.save(new Reservation(productId, quantity));
+        Reservation reservation = reservations.save(
+                new Reservation(productId, quantity, Instant.now().plus(reservationTtl)));
         log.info("reserved {} x{} -> {}", productId, quantity, reservation.getId());
         return reservation;
     }
