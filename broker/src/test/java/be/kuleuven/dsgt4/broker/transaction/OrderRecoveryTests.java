@@ -23,7 +23,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
     2PC rule: a committed decision rolls forward, an undecided one rolls back.
 */
 // "stub": in-process suppliers, so the test runs without live supplier services.
-@SpringBootTest
+// min-age 0: production recovery waits 5 minutes so it never races a live order; these
+// tests inject crash leftovers that are seconds old.
+@SpringBootTest(properties = "broker.recovery.min-age=0s")
 @ActiveProfiles("stub")
 @Transactional
 class OrderRecoveryTests {

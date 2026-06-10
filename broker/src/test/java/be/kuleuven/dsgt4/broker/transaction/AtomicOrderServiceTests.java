@@ -22,7 +22,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 // "stub": run FOOD/DRINK as in-process stubs so the 2PC success/rollback paths can be driven
 // (e.g. setDown) without a live supplier service.
-@SpringBootTest
+// min-age 0: production recovery waits 5 minutes so it never races a live order; these
+// tests sweep orders they created moments ago.
+@SpringBootTest(properties = "broker.recovery.min-age=0s")
 @ActiveProfiles("stub")
 @Transactional
 class AtomicOrderServiceTests {

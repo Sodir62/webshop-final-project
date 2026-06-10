@@ -9,8 +9,11 @@ import be.kuleuven.dsgt4.broker.supplier.SupplierException;
 import be.kuleuven.dsgt4.broker.supplier.SupplierRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -21,43 +24,66 @@ import java.util.List;
     phase 1  RESERVE every item   (each supplier places a cancellable hold)
     phase 2  CONFIRM every item   (each hold becomes a permanent sale)
     on any failure -> CANCEL the holds we already took, mark the order FAILED
+
+   An order can have several potential executors -- the customer's request (default
+   profile) or the queue listener ('async'), plus the periodic recovery sweep. Starting
+   one is therefore a status CAS (CREATED -> RESERVING): exactly one executor wins and
+   runs the protocol; every other caller sees a no-op and just reads the current state.
 */
 @Service
 public class AtomicOrderService {
 
     private static final Logger log = LoggerFactory.getLogger(AtomicOrderService.class);
-    private static final int MAX_CONFIRM_RETRIES = 3;
 
     private final CustomerOrderRepository orders;
     private final SupplierRegistry suppliers;
+    private final Duration recoveryMinAge;
+    private final Duration completionWindow;
 
-    public AtomicOrderService(CustomerOrderRepository orders, SupplierRegistry suppliers) {
+    public AtomicOrderService(CustomerOrderRepository orders,
+                              SupplierRegistry suppliers,
+                              @Value("${broker.recovery.min-age:5m}") Duration recoveryMinAge,
+                              @Value("${broker.order.completion-window:15m}") Duration completionWindow) {
         this.orders = orders;
         this.suppliers = suppliers;
+        this.recoveryMinAge = recoveryMinAge;
+        this.completionWindow = completionWindow;
     }
 
-    // Runs the two-phase order and returns it in its final state (SUCCEEDED or FAILED).
+    /**
+     * Runs the two-phase order and returns it in the state it reached: SUCCEEDED, FAILED,
+     * or CONFIRMING when phase 2 was interrupted (the queue listener / recovery sweep
+     * rolls that forward; confirm is idempotent). Callers that lose the CREATED->RESERVING
+     * claim (concurrent listener, sweep, or double submit) get the current state back.
+     */
     public CustomerOrder placeOrder(String orderId) {
-        CustomerOrder order = orders.findById(orderId)
-                .orElseThrow(() -> new IllegalArgumentException("no such order " + orderId));
+        if (orders.transitionStatus(orderId, OrderStatus.CREATED, OrderStatus.RESERVING) == 0) {
+            CustomerOrder order = orders.findById(orderId)
+                    .orElseThrow(() -> new IllegalArgumentException("no such order " + orderId));
+            log.info("order {} not claimable in {}; another executor owns it", orderId, order.getStatus());
+            return order;
+        }
+        CustomerOrder order = orders.findById(orderId).orElseThrow();
         log.info("order {} start: {} item(s)", orderId, order.getItems().size());
-
-        order.setStatus(OrderStatus.RESERVING);
-        save(order);
 
         // PHASE 1 (the "vote"): reserve every item. While we are still voting the order is
         // UNDECIDED, so a failure here rolls BACK: cancel the holds we took and mark it FAILED.
         List<OrderItem> reserved = new ArrayList<>();   // exactly the holds we must undo on failure
         try {
             for (OrderItem item : List.copyOf(order.getItems())) {
+                if (item.getReservationId() != null) {
+                    continue;   // already holds stock (a reset retry); never double-reserve
+                }
                 String reservationId = suppliers.get(item.getSupplierType())
                         .reserve(item.getProductId(), item.getQuantity());
                 item.setReservationId(reservationId);
                 item.setStatus(ItemStatus.RESERVED);
                 reserved.add(item);
                 save(order);
-                //to do if our broker crashes here we are lowkey fucked, because it remains pending, so we cant cancel it.
-                // We either need to add some kind way to track this, probably with the supplier.
+                // If the broker dies between the reserve() above and this save(), the hold is
+                // recorded nowhere on our side, so recovery cannot cancel it. The suppliers'
+                // reservation TTL is the backstop: an unconfirmed hold expires on its own and
+                // gives its stock back.
                 log.info("  reserved {} x{} -> {}", item.getProductId(), item.getQuantity(), reservationId);
             }
         } catch (SupplierException failure) {
@@ -76,41 +102,36 @@ public class AtomicOrderService {
         save(order);
 
         // PHASE 2 (the "commit"): confirm every reservation, making each sale permanent.
-        // Retry up to 3 times with exponential backoff before deferring to the recovery runner.
         order.setStatus(OrderStatus.CONFIRMING);
         save(order);
-        for (int attempt = 1; attempt <= MAX_CONFIRM_RETRIES; attempt++) {
-            try {
-                confirmReserved(order);
-                order.setStatus(OrderStatus.SUCCEEDED);
-                save(order);
-                log.info("order {} SUCCEEDED, total={}", orderId, order.total());
-                return order;
-            } catch (SupplierException failure) {
-                log.warn("order {} confirm attempt {}/{} failed (\"{}\")",
-                        orderId, attempt, MAX_CONFIRM_RETRIES, failure.getMessage());
-                if (attempt < MAX_CONFIRM_RETRIES) {
-                    try {
-                        Thread.sleep((long) Math.pow(2, attempt - 1) * 1000);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
-                }
-            }
+        try {
+            confirmReserved(order);
+        } catch (SupplierException failure) {
+            // Do NOT compensate/abort: some items may already be permanent sales. Leave the
+            // order durably CONFIRMING; the queue listener ('async') and the periodic recovery
+            // sweep keep rolling it forward. No paid sale is ever discarded.
+            log.error("order {} confirm interrupted (\"{}\"); left CONFIRMING to be rolled forward",
+                    orderId, failure.getMessage());
+            return order;
         }
-        log.error("order {} confirm exhausted {} retries; left CONFIRMING for recovery",
-                orderId, MAX_CONFIRM_RETRIES);
+
+        order.setStatus(OrderStatus.SUCCEEDED);
+        save(order);
+        log.info("order {} SUCCEEDED, total={}", orderId, order.total());
         return order;
     }
 
     /**
-     * Resume every order the broker left mid-transaction (called on startup after a
-     * crash). Returns how many were found. 2PC recovery rule below.
+     * Resume every order left mid-transaction (run periodically by OrderRecoveryRunner).
+     * Only orders older than the min age are touched: younger ones may still be executing
+     * in a live request or in the queue listener, and sweeping those concurrently would
+     * double-process them. Returns how many were found.
      */
     public int recoverInterruptedOrders() {
-        List<CustomerOrder> stuck = orders.findByStatusIn(
-                List.of(OrderStatus.CREATED, OrderStatus.RESERVING, OrderStatus.RESERVED, OrderStatus.CONFIRMING));
+        Instant cutoff = Instant.now().minus(recoveryMinAge);
+        List<CustomerOrder> stuck = orders.findByStatusInAndCreatedAtBefore(
+                List.of(OrderStatus.CREATED, OrderStatus.RESERVING, OrderStatus.RESERVED, OrderStatus.CONFIRMING),
+                cutoff);
         if (!stuck.isEmpty()) {
             log.warn("recovery: {} interrupted order(s) to resume", stuck.size());
         }
@@ -130,36 +151,30 @@ public class AtomicOrderService {
             case RESERVED, CONFIRMING -> {
                 order.setStatus(OrderStatus.CONFIRMING);
                 save(order);
-                boolean confirmed = false;
-                for (int attempt = 1; attempt <= MAX_CONFIRM_RETRIES; attempt++) {
-                    try {
-                        confirmReserved(order);
-                        order.setStatus(OrderStatus.SUCCEEDED);
-                        save(order);
-                        log.info("recovery: order {} rolled forward to SUCCEEDED", order.getId());
-                        confirmed = true;
-                        break;
-                    } catch (SupplierException e) {
-                        log.warn("recovery: order {} confirm attempt {}/{} failed (\"{}\")",
-                                order.getId(), attempt, MAX_CONFIRM_RETRIES, e.getMessage());
-                        if (attempt < MAX_CONFIRM_RETRIES) {
-                            try {
-                                Thread.sleep((long) Math.pow(2, attempt - 1) * 1000);
-                            } catch (InterruptedException ie) {
-                                Thread.currentThread().interrupt();
-                                break;
-                            }
-                        }
-                    }
-                }
-                if (!confirmed) {
-                    log.error("recovery: order {} confirm exhausted retries; will retry next cycle",
-                            order.getId());
+                try {
+                    confirmReserved(order);
+                    order.setStatus(OrderStatus.SUCCEEDED);
+                    save(order);
+                    log.info("recovery: order {} rolled forward to SUCCEEDED", order.getId());
+                } catch (SupplierException e) {
+                    log.error("recovery: order {} confirm not possible yet (\"{}\"); will retry next sweep",
+                            order.getId(), e.getMessage());
                 }
             }
             case CREATED -> {
-                log.info("recovery: order {} was CREATED but never processed; running now", order.getId());
-                placeOrder(order.getId());
+                // The order never started: the queue message was lost in a crash, or the
+                // process died between save and execution. Within the completion window we
+                // can still honour it; past the window nothing is held anywhere, so failing
+                // is the safe abort.
+                if (order.getCreatedAt().plus(completionWindow).isBefore(Instant.now())) {
+                    if (failIfUnprocessed(order.getId())) {
+                        log.warn("recovery: order {} was never processed and its completion window passed; FAILED",
+                                order.getId());
+                    }
+                } else {
+                    log.info("recovery: order {} was CREATED but never processed; running it now", order.getId());
+                    placeOrder(order.getId());
+                }
             }
             case RESERVING -> {
                 List<OrderItem> held = order.getItems().stream()
@@ -175,7 +190,22 @@ public class AtomicOrderService {
         }
     }
 
-    // Confirms every RESERVED item 
+    /**
+     * Terminal abort for an order that never started processing: CAS CREATED -> FAILED.
+     * Safe at any moment because a CREATED order holds nothing at any supplier. Returns
+     * whether this call won the transition (false: someone started or already ended it).
+     */
+    public boolean failIfUnprocessed(String orderId) {
+        if (orders.transitionStatus(orderId, OrderStatus.CREATED, OrderStatus.FAILED) == 0) {
+            return false;
+        }
+        CustomerOrder order = orders.findById(orderId).orElseThrow();
+        markRemainingItemsFailed(order);
+        save(order);
+        return true;
+    }
+
+    // Confirms every RESERVED item
     private void confirmReserved(CustomerOrder order) {
         // Snapshot for the same reason as phase 1: save() inside the loop flushes the
         // managed item collection, so we must not iterate the live one.
@@ -219,7 +249,7 @@ public class AtomicOrderService {
         }
     }
 
-    // Write the order's current status to the DB now, as its own committed step 
+    // Write the order's current status to the DB now, as its own committed step
     private void save(CustomerOrder order) {
         orders.saveAndFlush(order);
     }
