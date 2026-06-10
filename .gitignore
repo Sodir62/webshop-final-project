@@ -1,0 +1,50 @@
+### Build output ###
+**/target/
+**/build/
+!**/src/main/**/target/
+!**/src/test/**/target/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### Java ###
+*.class
+*.jar
+*.war
+*.ear
+*.lst
+
+### Maven ###
+.mvn/wrapper/maven-wrapper.jar
+
+### IDE - IntelliJ ###
+.idea/
+*.iws
+*.iml
+*.ipr
+
+### IDE - Eclipse/STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings/
+.springBeans
+.sts4-cache
+
+### IDE - NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### IDE - VS Code ###
+.vscode/
+
+### OS ###
+.DS_Store
+Thumbs.db
+
+### Misc ###
+HELP.md
+*.log
