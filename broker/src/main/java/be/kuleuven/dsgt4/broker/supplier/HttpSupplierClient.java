@@ -2,9 +2,11 @@ package be.kuleuven.dsgt4.broker.supplier;
 
 import be.kuleuven.dsgt4.broker.data.SupplierType;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
@@ -28,9 +30,13 @@ public class HttpSupplierClient implements SupplierClient {
 
     public HttpSupplierClient(SupplierType type, String baseUrl) {
         this.type = type;
-        // TODO fault tolerance: set connect/read timeouts (a hung supplier currently blocks the
-        // broker forever), and guard find() against a null product id (malformed response -> NPE).
-        this.http = RestClient.builder().baseUrl(baseUrl).build();
+        var factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(5));
+        factory.setReadTimeout(Duration.ofSeconds(10));
+        this.http = RestClient.builder()
+                .baseUrl(baseUrl)
+                .requestFactory(factory)
+                .build();
     }
 
     @Override
@@ -53,7 +59,7 @@ public class HttpSupplierClient implements SupplierClient {
 
     @Override
     public Optional<Product> find(String productId) {
-        return list().stream().filter(p -> p.id().equals(productId)).findFirst();
+        return list().stream().filter(p -> productId.equals(p.id())).findFirst();
     }
 
     @Override

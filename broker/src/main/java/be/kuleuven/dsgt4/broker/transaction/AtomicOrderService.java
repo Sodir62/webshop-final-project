@@ -26,6 +26,7 @@ import java.util.List;
 public class AtomicOrderService {
 
     private static final Logger log = LoggerFactory.getLogger(AtomicOrderService.class);
+    private static final int MAX_CONFIRM_RETRIES = 3;
 
     private final CustomerOrderRepository orders;
     private final SupplierRegistry suppliers;
@@ -75,22 +76,31 @@ public class AtomicOrderService {
         save(order);
 
         // PHASE 2 (the "commit"): confirm every reservation, making each sale permanent.
+        // Retry up to 3 times with exponential backoff before deferring to the recovery runner.
         order.setStatus(OrderStatus.CONFIRMING);
         save(order);
-        try {
-            confirmReserved(order);
-        } catch (SupplierException failure) {
-            // Do NOT compensate/abort: some items may already be permanent sales. Leave the order
-            // durably CONFIRMING so OrderRecoveryRunner finishes confirming it on the next startup
-            // (exactly what resume() does). No paid sale is ever discarded. TODO: no inline retry yet.
-            log.error("order {} confirm interrupted (\"{}\"); left CONFIRMING for recovery to roll forward",
-                    orderId, failure.getMessage());
-            return order;
+        for (int attempt = 1; attempt <= MAX_CONFIRM_RETRIES; attempt++) {
+            try {
+                confirmReserved(order);
+                order.setStatus(OrderStatus.SUCCEEDED);
+                save(order);
+                log.info("order {} SUCCEEDED, total={}", orderId, order.total());
+                return order;
+            } catch (SupplierException failure) {
+                log.warn("order {} confirm attempt {}/{} failed (\"{}\")",
+                        orderId, attempt, MAX_CONFIRM_RETRIES, failure.getMessage());
+                if (attempt < MAX_CONFIRM_RETRIES) {
+                    try {
+                        Thread.sleep((long) Math.pow(2, attempt - 1) * 1000);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
         }
-
-        order.setStatus(OrderStatus.SUCCEEDED);
-        save(order);
-        log.info("order {} SUCCEEDED, total={}", orderId, order.total());
+        log.error("order {} confirm exhausted {} retries; left CONFIRMING for recovery",
+                orderId, MAX_CONFIRM_RETRIES);
         return order;
     }
 
@@ -120,16 +130,31 @@ public class AtomicOrderService {
             case RESERVED, CONFIRMING -> {
                 order.setStatus(OrderStatus.CONFIRMING);
                 save(order);
-                try {
-                    confirmReserved(order);
-                    order.setStatus(OrderStatus.SUCCEEDED);
-                    save(order);
-                    log.info("recovery: order {} rolled forward to SUCCEEDED", order.getId());
-                } catch (SupplierException e) {
-                    // Leave it CONFIRMING and reattempt on the next startup (recovery runs once per boot).
-                    // TODO: no automatic retry yet
-                    log.error("recovery: order {} confirm not possible yet ({}); will retry on next startup",
-                            order.getId(), e.getMessage());
+                boolean confirmed = false;
+                for (int attempt = 1; attempt <= MAX_CONFIRM_RETRIES; attempt++) {
+                    try {
+                        confirmReserved(order);
+                        order.setStatus(OrderStatus.SUCCEEDED);
+                        save(order);
+                        log.info("recovery: order {} rolled forward to SUCCEEDED", order.getId());
+                        confirmed = true;
+                        break;
+                    } catch (SupplierException e) {
+                        log.warn("recovery: order {} confirm attempt {}/{} failed (\"{}\")",
+                                order.getId(), attempt, MAX_CONFIRM_RETRIES, e.getMessage());
+                        if (attempt < MAX_CONFIRM_RETRIES) {
+                            try {
+                                Thread.sleep((long) Math.pow(2, attempt - 1) * 1000);
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt();
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (!confirmed) {
+                    log.error("recovery: order {} confirm exhausted retries; will retry next cycle",
+                            order.getId());
                 }
             }
             case RESERVING -> {

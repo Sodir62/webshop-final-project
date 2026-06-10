@@ -3,6 +3,7 @@ package be.kuleuven.dsgt4.ticketsupplier.data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -18,6 +19,7 @@ public class MongoTicketReservation {
     private int quantity;
     private ReservationStatus status = ReservationStatus.PENDING;
     private Instant createdAt = Instant.now();
+    private Instant expiresAt = Instant.now().plus(Duration.ofMinutes(20));
 
     public MongoTicketReservation() {
     }
@@ -33,4 +35,5 @@ public class MongoTicketReservation {
     public ReservationStatus getStatus() { return status; }
     public void setStatus(ReservationStatus status) { this.status = status; }
     public Instant getCreatedAt() { return createdAt; }
+    public Instant getExpiresAt() { return expiresAt; }
 }

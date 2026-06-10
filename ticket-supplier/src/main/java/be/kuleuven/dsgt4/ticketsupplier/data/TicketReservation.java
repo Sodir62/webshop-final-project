@@ -6,6 +6,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -29,6 +30,8 @@ public class TicketReservation {
     @Column(nullable = false)
     private Instant createdAt = Instant.now();
 
+    private Instant expiresAt = Instant.now().plus(Duration.ofMinutes(20));
+
     protected TicketReservation() {
     }
 
@@ -43,4 +46,5 @@ public class TicketReservation {
     public ReservationStatus getStatus() { return status; }
     public void setStatus(ReservationStatus status) { this.status = status; }
     public Instant getCreatedAt() { return createdAt; }
+    public Instant getExpiresAt() { return expiresAt; }
 }
