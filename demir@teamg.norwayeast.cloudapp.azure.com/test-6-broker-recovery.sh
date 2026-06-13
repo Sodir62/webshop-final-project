@@ -43,7 +43,7 @@ ORDER_ID=$(python3 -c "import uuid; print(str(uuid.uuid4()))")
 info "Inserting stuck RESERVING order into broker DB (order=$ORDER_ID)..."
 broker_psql <<EOF
 INSERT INTO customer_order (id, status, delivery_address, cardholder_name, card_last4, created_at)
-VALUES ('$ORDER_ID', 'RESERVING', '123 Test St', 'Test User', '1234', NOW() - INTERVAL '10 minutes');
+VALUES ('$ORDER_ID', 'RESERVING', '123 Test St', 'Test User', '1234', NOW());
 
 INSERT INTO order_item (supplier_type, product_id, product_name, unit_price, quantity, reservation_id, status, order_id)
 VALUES ('TICKET', 'T-001', 'Coldplay @ Sportpaleis', 85.00, 1, '$TICKET_RES_ID', 'RESERVED', '$ORDER_ID');
@@ -100,7 +100,7 @@ ORDER2_ID=$(python3 -c "import uuid; print(str(uuid.uuid4()))")
 info "Inserting stuck RESERVED order (commit decision already made, broker died before confirming)..."
 broker_psql <<EOF
 INSERT INTO customer_order (id, status, delivery_address, cardholder_name, card_last4, created_at)
-VALUES ('$ORDER2_ID', 'RESERVED', '456 Test Ave', 'Test User2', '5678', NOW() - INTERVAL '10 minutes');
+VALUES ('$ORDER2_ID', 'RESERVED', '456 Test Ave', 'Test User2', '5678', NOW());
 
 INSERT INTO order_item (supplier_type, product_id, product_name, unit_price, quantity, reservation_id, status, order_id)
 VALUES ('TICKET', 'T-001', 'Coldplay @ Sportpaleis', 85.00, 1, '$T_ID', 'RESERVED', '$ORDER2_ID');
