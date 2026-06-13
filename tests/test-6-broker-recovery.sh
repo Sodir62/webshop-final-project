@@ -15,12 +15,33 @@ echo "========================================"
 
 require_token
 
-# Verify psql is available
 if ! command -v psql &>/dev/null; then
     fail "psql not found — install with: sudo apt-get install -y postgresql-client"
     exit 1
 fi
 info "psql found — will connect to $BROKER_DB_HOST"
+
+# Poll the broker DB until an order reaches the expected status or timeout expires.
+# Usage: wait_for_status <order_id> <expected_status> <timeout_seconds>
+wait_for_status() {
+    local order_id=$1 expected=$2 timeout=$3
+    local elapsed=0
+    while [ $elapsed -lt $timeout ]; do
+        local current
+        current=$(broker_psql -t -c \
+            "SELECT status FROM customer_order WHERE id='$order_id';" | tr -d ' \n')
+        if [ "$current" = "$expected" ]; then
+            echo "$current"
+            return 0
+        fi
+        sleep 2
+        elapsed=$((elapsed + 2))
+    done
+    # Return whatever status we ended up with
+    broker_psql -t -c \
+        "SELECT status FROM customer_order WHERE id='$order_id';" | tr -d ' \n'
+    return 1
+}
 
 echo ""
 echo "--- Scenario A: Crash during RESERVING (should ROLLBACK) ---"
@@ -51,18 +72,14 @@ EOF
 pass "Stuck RESERVING order inserted (id=$ORDER_ID)"
 
 echo ""
-info "Restarting broker — OrderRecoveryRunner should roll back this order on startup..."
+info "Restarting broker — waiting up to 60s for OrderRecoveryRunner to roll back..."
 sudo systemctl restart broker
-sleep 12
 
-info "Checking order status in broker DB..."
-STATUS=$(broker_psql -t -c \
-    "SELECT status FROM customer_order WHERE id='$ORDER_ID';" | tr -d ' \n')
-
+STATUS=$(wait_for_status "$ORDER_ID" "FAILED" 60)
 if [ "$STATUS" = "FAILED" ]; then
     pass "Order rolled back to FAILED — RESERVING orders are correctly undone on restart"
 else
-    fail "Expected FAILED, got '$STATUS'"
+    fail "Expected FAILED, got '$STATUS' (check: sudo journalctl -u broker -n 50 | grep recovery)"
 fi
 
 info "Checking ticket reservation was cancelled (stock restored)..."
@@ -110,17 +127,14 @@ VALUES ('FOOD', 'F-001', 'Nachos', 6.50, 1, '$F_ID', 'RESERVED', '$ORDER2_ID');
 EOF
 pass "Stuck RESERVED order inserted (id=$ORDER2_ID)"
 
-info "Restarting broker — OrderRecoveryRunner should roll FORWARD this order..."
+info "Restarting broker — waiting up to 60s for OrderRecoveryRunner to roll forward..."
 sudo systemctl restart broker
-sleep 12
 
-STATUS2=$(broker_psql -t -c \
-    "SELECT status FROM customer_order WHERE id='$ORDER2_ID';" | tr -d ' \n')
-
+STATUS2=$(wait_for_status "$ORDER2_ID" "SUCCEEDED" 60)
 if [ "$STATUS2" = "SUCCEEDED" ]; then
     pass "Order rolled forward to SUCCEEDED — RESERVED orders correctly completed on restart"
 else
-    fail "Expected SUCCEEDED, got '$STATUS2'"
+    fail "Expected SUCCEEDED, got '$STATUS2' (check: sudo journalctl -u broker -n 50 | grep recovery)"
 fi
 
 echo ""

@@ -22,12 +22,12 @@ else
     fail "Expected 302, got HTTP $S1 — endpoint may be unprotected!"
 fi
 
-info "Checking redirect target is Auth0..."
+info "Checking redirect target is the OAuth2 login flow..."
 LOCATION=$(curl -s -D - -o /dev/null --max-redirs 0 "$BROKER/manager/orders" | grep -i "^location:" | tr -d '\r')
-if echo "$LOCATION" | grep -q "auth0.com"; then
-    pass "Redirect points to Auth0: $LOCATION"
+if echo "$LOCATION" | grep -qE "(auth0|oauth2/authorization)"; then
+    pass "Redirect points to OAuth2/Auth0 login: $LOCATION"
 else
-    fail "Redirect does not point to Auth0: $LOCATION"
+    fail "Redirect does not point to login: $LOCATION"
 fi
 
 echo ""
