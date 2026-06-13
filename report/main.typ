@@ -24,7 +24,7 @@
     [Sodir YUKSEL — #todo("r-number")],
     [Dimitrios KYRANOS — #todo("r-number")],
     [Demirhan YASAR — #todo("r-number")],
-    [Celal Emre ERKAN — #todo("r-number")],
+    [Celal Emre ERKAN — (r0916432)],
   ),
   period: "Academic year 2025–2026",
 )
@@ -145,11 +145,35 @@ supplier exposes and the broker consumes. Its four operations — list, reserve,
   ),
 ) <fig-api>
 
-Everything else is human-facing rather than B2B: the broker's own endpoints — `GET /`
-(catalog), `GET /concerts/{id}` (order form), `POST /orders` (place an order),
-`GET /orders/{id}` (status, self-refreshing while an order is still processing) and the
-protected `GET /manager/orders` (all orders) — serve HTML to a browser, not JSON to another
-service.
+Everything else is human-facing rather than B2B: the broker's own endpoints (@fig-broker-api)
+serve HTML to a browser, not JSON to another service.
+
+#figure(
+  caption: [The broker's own HTTP endpoints (browser-facing, HTML). All are anonymous except
+    the manager dashboard; the `auth0` profile additionally exposes OIDC login and logout.],
+  table(
+    columns: (auto, auto, 1fr),
+    align: (left + horizon, left + horizon, left + horizon),
+    inset: 6pt,
+    table.header([*Endpoint*], [*Access*], [*What it does*]),
+    [`GET /`], [anonymous], [Landing page: the catalog grid (concerts, plus food and drink
+      sections) built from the suppliers' live `list` calls; a supplier that is down just
+      renders an empty section instead of breaking the page.],
+    [`GET /concerts/{id}`], [anonymous], [Order form for one concert: ticket quantity, optional
+      food and drink dropdowns, the delivery address and the (simulated) card fields.],
+    [`POST /orders`], [anonymous], [Place an order: validates the form server-side, builds the
+      `CustomerOrder`, then runs the distributed transaction synchronously — or, under `async`,
+      enqueues the order and redirects immediately. Redirects to the order's page.],
+    [`GET /orders/{id}`], [anonymous \ (capability URL)], [Status page for that order; under
+      `async` it refreshes itself while the order completes in the background. The unguessable
+      UUID is the only access control.],
+    [`GET /manager/orders`], [`MANAGER`], [Manager dashboard: every customer's order with its
+      current state, newest first.],
+    [`GET /oauth2/authorization/auth0` \ `/logout`], [`auth0` \ profile], [OIDC login and
+      logout, added by Spring Security only under the `auth0` profile (login round-trips through
+      Auth0; logout clears the Auth0 session too).],
+  ),
+) <fig-broker-api>
 
 == Profiles
 
@@ -194,7 +218,7 @@ the local build; only the active profiles and a handful of environment variables
   grid(columns: (1fr, 1fr, 1fr), gutter: 10pt,
     acct([Azure account A — #todo("owner")], [#todo("region, e.g. West Europe")],
       dnode("Broker :8080", body: [Spring Boot \ PostgreSQL (brokerdb)], width: 100%)),
-    acct([Azure account B — #todo("owner")], [#todo("region, e.g. North Europe")],
+    acct([Azure account B — (Celal Emre Erkan)], [(Poland Central)],
       dnode("food-and-beverages :8081", body: [Spring Boot \ PostgreSQL (foodbevdb)], width: 100%)),
     acct([Azure account C — #todo("owner")], [#todo("region, e.g. France Central")],
       dnode("ticket-supplier :8082", body: [Spring Boot \ PostgreSQL or MongoDB], width: 100%)),
@@ -203,12 +227,16 @@ the local build; only the active profiles and a handful of environment variables
 
 *Configuration.* The `azure` profile reads the datasource and peers from environment variables
 (`DB_HOST`/`DB_USER`/`DB_PASSWORD`, `SUPPLIER_*_URL`); `auth0` adds the tenant variables
-(`AUTH0_DOMAIN`, client ids/secrets, audience). A missing variable fails at startup rather than
-half-working. Schemas are created by Hibernate (`ddl-auto=update`).
+(`AUTH0_DOMAIN`, client ids/secrets, audience). A missing variable fails at startup rather than half-working. Schemas are created by Hibernate (`ddl-auto=update`).
 
 *Deployed instance.* The VMs run with `--spring.profiles.active=azure,async,auth0`. For the
-grading team: the shop is reachable at #todo("https://… broker URL"), manager login
-#todo("grading credentials"). The application stays deployed until grades are received.
+grading team: the shop is reachable at "http://20.251.203.131:8080/", manager login credentials are 
+
+email: 'webshopmanager\@gmail.com'
+
+ password: 'Demirhan12345.'
+
+ The application stays deployed until grades are received.
 
 = Data model <sec-data>
 
@@ -234,6 +262,48 @@ or cancel.
       (`PENDING`/`CONFIRMED`/`CANCELLED`), `createdAt`, `expiresAt` (the hold's TTL)],
   ),
 ) <fig-data>
+
+@fig-schema gives the physical side of the same model: the tables and columns Hibernate
+generates (`ddl-auto=update`) in each of the three independent databases.
+
+#figure(
+  caption: [Physical schema of each service's own database — three separate databases, no
+    shared tables. The ticket supplier uses these two relational tables by default, or two
+    equivalent MongoDB collections (same fields, no column types) under the `mongo` profile.],
+  table(
+    columns: (auto, auto, 1fr),
+    align: (left + horizon, left + horizon, left + horizon),
+    inset: 6pt,
+    table.header([*Database*], [*Table*], [*Columns* (PK / FK / enum noted; · separates columns)]),
+
+    table.cell(rowspan: 2)[*brokerdb* \ broker],
+    [`customer_order`],
+    [`id` varchar(36) *PK* (UUID) · `delivery_address` · `cardholder_name` ·
+     `card_last4` varchar(4) · `status` enum `OrderStatus` · `created_at` timestamp],
+    [`order_item`],
+    [`id` bigint *PK* (auto) · `order_id` bigint *FK* → `customer_order` ·
+     `supplier_type` enum (TICKET / FOOD / DRINK) · `product_id` · `product_name` ·
+     `unit_price` decimal · `quantity` int · `reservation_id` varchar(64) ·
+     `status` enum `ItemStatus`],
+
+    table.cell(rowspan: 2)[*foodbevdb* \ food-and-beverages],
+    [`product`],
+    [`id` varchar(16) *PK* · `name` · `description` · `price` decimal · `stock` int ·
+     `category` enum (FOOD / DRINK)],
+    [`reservation`],
+    [`id` varchar(36) *PK* (UUID) · `product_id` varchar(16) · `quantity` int ·
+     `status` enum (PENDING / CONFIRMED / CANCELLED) · `created_at` timestamp ·
+     `expires_at` timestamp (TTL)],
+
+    table.cell(rowspan: 2)[*ticketdb* \ ticket-supplier],
+    [`ticket_product`],
+    [`id` varchar(16) *PK* · `name` · `description` · `price` decimal · `stock` int],
+    [`ticket_reservation`],
+    [`id` varchar(36) *PK* (UUID) · `product_id` varchar(16) · `quantity` int ·
+     `status` enum (PENDING / CONFIRMED / CANCELLED) · `created_at` timestamp ·
+     `expires_at` timestamp (TTL)],
+  ),
+) <fig-schema>
 
 Three decisions shaped this model. The first is *domain ownership*: each company is the sole
 writer of its own catalog and stock, which is what makes the suppliers genuinely independent
@@ -463,8 +533,46 @@ identity provider:
   orders from arbitrary HTTP clients on the internet, which answers the assignment's B2B
   security question.
 
-Tenant specifics (domain, client ids, the role claim namespace) are environment variables;
-the tenant itself: #todo("Auth0 tenant + grading test user").
+@fig-auth shows both halves: the human OIDC login on the left, and the machine-to-machine
+token the broker carries to the suppliers on the right.
+
+#figure(
+  caption: [Authorization under the `auth0` profile. Left: humans authenticate to the broker
+    with the OIDC authorization-code flow. Right: the broker authenticates to the suppliers
+    with a cached machine-to-machine JWT, which each supplier validates as an OAuth2 resource
+    server. The default profile uses neither — anonymous shop, HTTP-Basic manager, open B2B API.],
+  block(width: 100%)[
+    #set align(center)
+    #grid(columns: (1fr, 1fr), gutter: 16pt,
+      [
+        #text(weight: "bold", size: 9pt)[Human access — OIDC]
+        #v(5pt)
+        #dnode("Customer / manager browser", width: 100%)
+        #adown(label: [1 · redirect to log in])
+        #dnode("Auth0 — identity provider", width: 100%, fill: luma(245), edge: luma(120),
+          body: [authenticates the human; issues an ID token carrying a roles claim])
+        #adown(label: [2 · ID token (roles claim)])
+        #dnode("Broker — OIDC client", width: 100%,
+          body: [maps the claim to authorities; `/manager/**` requires role `MANAGER`,
+            everything else stays anonymous])
+      ],
+      [
+        #text(weight: "bold", size: 9pt)[Service-to-service — M2M JWT]
+        #v(5pt)
+        #dnode("Broker — M2M client", width: 100%, body: [obtains the token via `Auth0TokenService`])
+        #adown(label: [1 · client-credentials grant \ (client id + secret, audience)])
+        #dnode("Auth0 — token endpoint", width: 100%, fill: luma(245), edge: luma(120),
+          body: [issues a signed JWT access token])
+        #adown(label: [2 · JWT, cached until expiry])
+        #dnode("Broker → supplier call", width: 100%,
+          body: [`Authorization: Bearer <JWT>` on every reserve / confirm / cancel])
+        #adown(label: [3 · validate signature, issuer, audience])
+        #dnode("Supplier — OAuth2 resource server", width: 100%,
+          body: [serves on a valid token; otherwise `401`])
+      ],
+    )
+  ],
+) <fig-auth>
 
 = SQL versus NoSQL: the MongoDB experience <sec-nosql>
 
@@ -587,7 +695,7 @@ supplier down under the `async` profile to show the 15-minute background complet
     [Sodir YUKSEL], [#todo("role")], [#todo("contributions")], [#todo("h")],
     [Dimitrios KYRANOS], [#todo("role")], [#todo("contributions")], [#todo("h")],
     [Demirhan YASAR], [#todo("role")], [#todo("contributions")], [#todo("h")],
-    [Celal Emre ERKAN], [#todo("role")], [#todo("contributions")], [#todo("h")],
+    [Celal Emre ERKAN], [developer], [food and beverages supplier code and access control ], [15],
   ),
 ) <tab-team>
 
