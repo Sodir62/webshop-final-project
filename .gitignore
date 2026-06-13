@@ -45,6 +45,9 @@
 .DS_Store
 Thumbs.db
 
+### test ###
+tests/config.sh
+
 ### Secrets ###
 .env
 
