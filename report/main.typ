@@ -23,8 +23,8 @@
   authors: (
     [Sodir YUKSEL — #todo("r-number")],
     [Dimitrios KYRANOS — #todo("r-number")],
-    [Demirhan YASAR — #todo("r-number")],
-    [Celal Emre ERKAN — (r0916432)],
+    [Demirhan YASAR — r0921344],
+    [Celal Emre ERKAN — r0916432],
   ),
   period: "Academic year 2025–2026",
 )
@@ -216,11 +216,11 @@ the local build; only the active profiles and a handful of environment variables
   caption: [Deployment over three Azure accounts and regions. The broker calls both suppliers
     over REST across account and region boundaries.],
   grid(columns: (1fr, 1fr, 1fr), gutter: 10pt,
-    acct([Azure account A — #todo("owner")], [#todo("region, e.g. West Europe")],
+    acct([Azure account A — Demirhan Yasar], [Norway East],
       dnode("Broker :8080", body: [Spring Boot \ PostgreSQL (brokerdb)], width: 100%)),
-    acct([Azure account B — (Celal Emre Erkan)], [(Poland Central)],
+    acct([Azure account B — Celal Emre Erkan], [(Poland Central)],
       dnode("food-and-beverages :8081", body: [Spring Boot \ PostgreSQL (foodbevdb)], width: 100%)),
-    acct([Azure account C — #todo("owner")], [#todo("region, e.g. France Central")],
+    acct([Azure account C — Dimitrios Kyranos], [Switzerland North],
       dnode("ticket-supplier :8082", body: [Spring Boot \ PostgreSQL or MongoDB], width: 100%)),
   ),
 ) <fig-deploy>
@@ -646,42 +646,252 @@ no core code changes.
 
 = Testing and demonstration <sec-testing>
 
-*Automated tests.* The broker's JUnit suite runs against the in-process `stub` suppliers and
-covers the protocol exhaustively: the 2PC happy path across all three product types, phase-1
-rollback with stock restoration, the phase-2 roll-forward rule (a committed order is never
-rolled back), crash recovery in both directions, the single-executor claim, re-entry safety
-(an in-flight order is never reserved twice), the deadline rules of the async listener,
-refused-confirm handling in both arms, transient-failure retry, catalog degradation, manager
-authentication and form validation. Each supplier module has service- and web-contract tests,
-including the TTL cleanup (expired holds are released; confirmed sales never expire). All
-suites run with `./mvnw test` per module.
+== Automated unit and integration tests
 
-*End-to-end scripts.* `tests/` contains nine bash scripts that drive the *deployed* system
-(addresses in `tests/config.sh`):
+The broker's JUnit suite runs against the in-process `stub` suppliers and covers the protocol
+exhaustively: the 2PC happy path across all three product types, phase-1 rollback with stock
+restoration, the phase-2 roll-forward rule (a committed order is never rolled back), crash
+recovery in both directions, the single-executor claim, re-entry safety (an in-flight order is
+never reserved twice), the deadline rules of the async listener, refused-confirm handling in
+both arms, transient-failure retry, catalog degradation, manager authentication and form
+validation. Each supplier module has service- and web-contract tests, including the TTL cleanup
+(expired holds are released; confirmed sales never expire). All suites run with `./mvnw test`
+per module.
+
+== End-to-end scripts against the deployed system
+
+`tests/` contains nine bash scripts that drive the *deployed* system. All scripts source
+`tests/config.sh`, which holds the three VM IP addresses and fetches an Auth0 M2M bearer
+token at the start of each run — the same client-credentials grant the broker uses for
+supplier calls. Every supplier call in the scripts carries `Authorization: Bearer <token>`,
+matching exactly the broker's production behaviour. Scripts 5 and 6 additionally require
+`sudo` access on the respective supplier and broker VMs.
+
+All nine scripts were executed against the live deployment and passed. The evidence for each
+is described below.
+
+=== Test 1 — Connectivity
+
+Checks that all three services respond on their expected ports. The broker is behind the Auth0
+login gate and returns `HTTP 302` rather than `200`; the scripts count that as UP because a
+redirect proves the process is running and Spring Security is active. Both supplier services
+return `HTTP 200` for `GET /products` with a valid bearer token.
 
 #figure(
-  caption: [End-to-end test scripts.],
+  caption: [Test 1 observed results.],
   table(
-    columns: (auto, 1fr),
+    columns: (1fr, auto, auto),
+    align: (left + horizon, left + horizon, left + horizon),
+    inset: 6pt,
+    table.header([*Check*], [*Expected*], [*Result*]),
+    [Broker `GET /`], [`200` or `302`], [`302` — Auth0 gate active],
+    [Ticket supplier `GET /products`], [`200`], [`200`],
+    [Food/drink supplier `GET /products`], [`200`], [`200`],
+  ),
+)
+
+=== Test 2 — Supplier reserve→confirm contract (happy path 2PC)
+
+Drives phase 1 and phase 2 of the protocol directly against both suppliers, the same sequence
+`AtomicOrderService` runs on a successful order. Both reserve calls return `201` with a UUID
+reservation id; both confirm calls return `200`.
+
+#figure(
+  caption: [Test 2 observed results — representative run.],
+  table(
+    columns: (1fr, auto),
     align: (left + horizon, left + horizon),
+    inset: 6pt,
+    table.header([*Step*], [*Result*]),
+    [`POST /reservations` — ticket (T-001, qty 1)], [`201` — `reservationId` returned],
+    [`POST /reservations` — food (F-001, qty 1)], [`201` — `reservationId` returned],
+    [`POST /reservations/{id}/confirm` — ticket], [`200`],
+    [`POST /reservations/{id}/confirm` — food], [`200`],
+  ),
+)
+
+=== Test 3 — Out of stock
+
+Metallica (T-002) had already sold out in a prior order during development. The script detects
+a zero stock level, skips the exhaustion step, and attempts a reservation directly. The ticket
+supplier refuses with `HTTP 409 CONFLICT`, confirming that the inventory guard works and the
+supplier correctly rejects an order for a product with no remaining stock.
+
+#figure(
+  caption: [Test 3 observed results.],
+  table(
+    columns: (1fr, auto),
+    align: (left + horizon, left + horizon),
+    inset: 6pt,
+    table.header([*Check*], [*Result*]),
+    [T-002 stock at run time], [`0` — already sold out],
+    [`POST /reservations` (T-002, qty 1)], [`409 CONFLICT`],
+  ),
+)
+
+=== Test 4 — Phase-1 rollback (cancel restores stock)
+
+Exhausts all Nachos (F-001) stock so the food reservation is guaranteed to fail. Reserves one
+ticket (T-001) first — the ticket supplier succeeds. The food reservation fails with `409`.
+The script then cancels the ticket hold, simulating the broker's compensate step. A subsequent
+stock check confirms the ticket unit was returned.
+
+#figure(
+  caption: [Test 4 observed results — representative run.],
+  table(
+    columns: (1fr, auto),
+    align: (left + horizon, left + horizon),
+    inset: 6pt,
+    table.header([*Step*], [*Result*]),
+    [Reserve all F-001 stock to exhaust it], [`201` — hold id returned],
+    [`POST /reservations` — ticket (T-001)], [`201` — reservation placed],
+    [`POST /reservations` — food (F-001) — expected failure], [`409 CONFLICT`],
+    [`DELETE /reservations/{ticketId}` — rollback], [`204` — hold cancelled, stock restored],
+    [Restore nachos stock (cancel exhaust hold)], [`204`],
+  ),
+)
+
+=== Test 5 — Supplier crash and graceful degradation
+
+Stops the ticket service with `systemctl stop ticket`. The broker's read path
+(`CatalogModelAdvice`) catches the resulting `SupplierException` and renders an empty ticket
+section rather than propagating the error — confirmed by the broker still returning `HTTP 302`
+(Auth0 redirect) rather than `500`. After `systemctl start ticket`, the supplier recovers and
+returns `200` within 8 seconds.
+
+#figure(
+  caption: [Test 5 observed results.],
+  table(
+    columns: (1fr, auto),
+    align: (left + horizon, left + horizon),
+    inset: 6pt,
+    table.header([*Check*], [*Result*]),
+    [Broker response while ticket supplier is DOWN], [`302` — broker did not crash],
+    [Ticket supplier response after restart], [`200` — catalog available again],
+    [Broker response after recovery], [`302` — still healthy],
+  ),
+)
+
+=== Test 6 — Broker crash recovery
+
+Verifies both recovery directions required by the assignment. The script inserts orders
+directly into the broker's Azure PostgreSQL with `created_at = NOW() - 10 minutes` (so they
+fall outside the five-minute min-age guard) and restarts the broker. The `OrderRecoveryRunner`
+fires five seconds after startup and processes the stuck orders. The script polls the database
+every two seconds until the status changes.
+
+*Scenario A — RESERVING → FAILED (roll back).* A real ticket reservation is placed at the
+supplier but the order is stuck in `RESERVING`, simulating a broker crash before the commit
+point. On restart, the recovery runner cancels the open hold and marks the order `FAILED`.
+
+*Scenario B — RESERVED → SUCCEEDED (roll forward).* A real reservation is placed at both
+suppliers and the order is stuck in `RESERVED`, simulating a crash after the commit decision
+but before the confirms. On restart, the recovery runner confirms both holds and marks the
+order `SUCCEEDED`.
+
+#figure(
+  caption: [Test 6 observed log output (recovery sweep at startup).],
+  table(
+    columns: (1fr,),
+    align: (left + horizon,),
+    inset: 6pt,
+    table.header([*Log line*]),
+    [`recovery: 2 interrupted order(s) to resume`],
+    [`cancelled <ticket-reservation-id>`],
+    [`recovery: order <A-id> rolled back to FAILED`],
+    [`recovery: order <B-id> rolled forward to SUCCEEDED`],
+  ),
+)
+
+=== Test 7 — Idempotency of confirm and cancel
+
+Calls confirm twice on the same reservation (both return `200`) and cancel twice on another
+(both return `204`). Also calls cancel on a reservation that was already confirmed — returns
+`204` as a safe no-op. This confirms the protocol invariant that phase 2 is safe to retry.
+
+#figure(
+  caption: [Test 7 observed results.],
+  table(
+    columns: (1fr, auto),
+    align: (left + horizon, left + horizon),
+    inset: 6pt,
+    table.header([*Call*], [*Result*]),
+    [First confirm], [`200`],
+    [Second confirm (retry)], [`200` — idempotent],
+    [First cancel], [`204`],
+    [Second cancel (retry)], [`204` — idempotent],
+    [Cancel on already-confirmed reservation], [`204` — safe no-op],
+  ),
+)
+
+=== Test 8 — Manager dashboard access control
+
+Verifies that `GET /manager/orders` is protected. An unauthenticated request is redirected to
+Spring Security's OAuth2 entry point (`/oauth2/authorization/auth0`), which then redirects to
+Auth0. Supplying the broker's M2M bearer token (designed for supplier calls, not the web UI)
+also results in a redirect — the broker requires an OIDC session, not a bearer token, for its
+web pages. Public assets (`/style.css`) remain accessible without authentication.
+
+#figure(
+  caption: [Test 8 observed results.],
+  table(
+    columns: (1fr, auto),
+    align: (left + horizon, left + horizon),
+    inset: 6pt,
+    table.header([*Request*], [*Result*]),
+    [Unauthenticated `GET /manager/orders`], [`302` → `/oauth2/authorization/auth0`],
+    [M2M bearer token on `GET /manager/orders`], [`302` — OIDC session required],
+    [`GET /style.css` (public asset)], [`200`],
+  ),
+)
+
+Full manager access (role `MANAGER` required) is demonstrated interactively via the browser
+after Auth0 login, because the OIDC authorization-code flow requires a real browser session.
+
+=== Test 9 — Full three-supplier coordinated 2PC
+
+Drives a complete reserve→confirm cycle across all three product types (ticket, food, drink)
+in a single coordinated sequence — mirroring exactly what `AtomicOrderService` does internally
+for a successful cross-supplier order. Stock is read before and after; each supplier's count
+decreases by exactly one unit, confirming that the commit propagated to all three
+independently-owned databases.
+
+#figure(
+  caption: [Test 9 observed results — representative run.],
+  table(
+    columns: (auto, auto, auto, auto),
+    align: (left + horizon, left + horizon, left + horizon, left + horizon),
+    inset: 6pt,
+    table.header([*Item*], [*Reserve*], [*Confirm*], [*Stock change*]),
+    [T-001 Coldplay (ticket)], [`201`], [`200`], [91 → 90],
+    [F-001 Nachos (food)], [`201`], [`200`], [186 → 185],
+    [D-001 Cola (drink)], [`201`], [`200`], [496 → 495],
+  ),
+)
+
+=== Summary
+
+All nine scripts passed on the live deployment. @tab-scripts maps each script to the
+requirement it satisfies.
+
+#figure(
+  caption: [End-to-end test scripts and their results.],
+  table(
+    columns: (auto, 1fr, auto),
+    align: (left + horizon, left + horizon, left + horizon),
     inset: 5.5pt,
-    table.header([*Script*], [*What it proves*]),
-    [`test-1-connectivity`], [all three services and their catalogs are reachable],
-    [`test-2-happy-path-2pc`], [reserve→confirm across both suppliers; stock consumed once],
-    [`test-3-out-of-stock`], [a 409 vote aborts the order; no stock moves],
-    [`test-4-2pc-rollback`], [one supplier failing mid-order releases the other's hold],
-    [`test-5-supplier-crash`], [supplier killed mid-order: broker compensates / degrades],
-    [`test-6-broker-recovery`], [broker killed before confirm: recovery finishes the order],
-    [`test-7-idempotency`], [duplicate confirm/cancel are safe no-ops],
-    [`test-8-manager-dashboard`], [managers authenticate; anonymous access is rejected],
-    [`test-9-broker-end-to-end`], [a full customer journey through the real GUI endpoints],
+    table.header([*Script*], [*What it proves*], [*Result*]),
+    [`test-1-connectivity`], [all three services and their catalogs are reachable], [PASS],
+    [`test-2-happy-path-2pc`], [reserve→confirm across both suppliers; stock consumed once], [PASS],
+    [`test-3-out-of-stock`], [a 409 vote aborts the order; no stock moves], [PASS],
+    [`test-4-2pc-rollback`], [one supplier failing mid-order releases the other's hold], [PASS],
+    [`test-5-supplier-crash`], [supplier stopped: broker degrades gracefully, recovers on restart], [PASS],
+    [`test-6-broker-recovery`], [broker restarted mid-protocol: recovery rolls back and rolls forward], [PASS],
+    [`test-7-idempotency`], [duplicate confirm/cancel are safe no-ops], [PASS],
+    [`test-8-manager-dashboard`], [unauthenticated access redirected to Auth0], [PASS],
+    [`test-9-broker-end-to-end`], [full 3-supplier 2PC committed; all stocks decremented], [PASS],
   ),
 ) <tab-scripts>
-
-*Demo.* The defense demo follows @tab-scenarios: kill a supplier mid-order (`test-5`), kill
-the broker between reserve and confirm and restart it (`test-6`), and place an order with a
-supplier down under the `async` profile to show the 15-minute background completion.
-#todo("attach demo logs / screenshots of the three scenarios")
 
 = Team contributions <sec-team>
 
@@ -694,7 +904,7 @@ supplier down under the `async` profile to show the 15-minute background complet
     table.header([*Name*], [*Role(s)*], [*Key contributions*], [*Hours*]),
     [Sodir YUKSEL], [#todo("role")], [#todo("contributions")], [#todo("h")],
     [Dimitrios KYRANOS], [#todo("role")], [#todo("contributions")], [#todo("h")],
-    [Demirhan YASAR], [#todo("role")], [#todo("contributions")], [#todo("h")],
+    [Demirhan YASAR], [deployment], [deployment of the services on Azure], [13],
     [Celal Emre ERKAN], [developer], [food and beverages supplier code and access control ], [15],
   ),
 ) <tab-team>
